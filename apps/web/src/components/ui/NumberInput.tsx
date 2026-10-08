@@ -99,11 +99,12 @@ export const MoneyInput = forwardRef<HTMLInputElement, NumberInputProps>(functio
       <div className="relative flex items-center [--stepper-space:3.25rem]">
         {showCurrency && (
           /*
-            The symbol sits directly before the digits rather than pinned to the
-            far start edge. On a wide field the old absolute position stranded a
-            lone "$" three inches from the number it belongs to.
+            The currency symbol sits at the START edge, which is the convention
+            for a money field. An earlier revision floated it next to the digits
+            to avoid a long gap, but that reads as a stray symbol rather than an
+            affix; the gap is normal and expected here.
           */
-          <span className="pointer-events-none absolute inset-y-0 end-[calc(var(--stepper-space)+0.5rem)] flex items-center text-[13px] text-[var(--text-tertiary)]">
+          <span className="pointer-events-none absolute inset-y-0 start-3 flex items-center text-[13px] text-[var(--text-tertiary)]">
             {meta.symbol}
           </span>
         )}
@@ -131,7 +132,7 @@ export const MoneyInput = forwardRef<HTMLInputElement, NumberInputProps>(functio
             controlBase,
             SIZES[size],
             'tabular-nums',
-            showCurrency ? 'ps-3 pe-[calc(var(--stepper-space)+1.75rem)]' : 'ps-3',
+            showCurrency ? 'ps-8 pe-[calc(var(--stepper-space)+0.5rem)]' : 'pe-[calc(var(--stepper-space)+0.5rem)]',
             'text-end',
             error && 'border-[var(--danger)]',
             className,

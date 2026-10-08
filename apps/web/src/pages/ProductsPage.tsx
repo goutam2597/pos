@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Package, Plus, Tags } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { money, qty } from '../lib/format';
+import { money, qty, percent } from '../lib/format';
 import {
   queryKeys,
   useApiList,
@@ -435,7 +435,9 @@ export function ProductsPage() {
                     onChange={(taxId) => setForm({ ...form, taxId })}
                     options={(taxes.data ?? []).map((tax) => ({
                       value: tax.id,
-                      label: `${tax.name}${tax.rate !== undefined ? ` (${tax.rate}%)` : ''}`,
+                      // `rate` is basis points (1000 = 10%); displaying it raw
+                      // showed "Standard Rate (1000%)". `percent()` converts.
+                      label: `${tax.name}${tax.rate !== undefined ? ` (${percent(tax.rate)})` : ''}`,
                     }))}
                   />
                 )}

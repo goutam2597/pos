@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { BarChart3, Download } from 'lucide-react';
 import { toast } from 'sonner';
 
-import { money } from '../lib/format';
+import { money, percent } from '../lib/format';
 import { queryKeys, useApiQuery, type StockValueRow } from '../lib/queries';
 import { useAuth } from '../lib/auth';
 import { DataTable, type Column } from '../components/data';
@@ -432,7 +432,7 @@ export function TaxSummaryReport() {
 
       <DonutChart
         title="Tax by rate"
-        data={rows.map((row) => ({ label: `${row.name} (${row.rate}%)`, value: row.taxAmount }))}
+        data={rows.map((row) => ({ label: `${row.name} (${percent(row.rate)})`, value: row.taxAmount }))}
         format={(value) => money(value, { showCents: false })}
         valueLabel="Tax collected"
         centerLabel="Total collected"
@@ -444,7 +444,7 @@ export function TaxSummaryReport() {
         tableId="report-tax-summary"
         columns={[
           { key: 'name', header: 'Tax', value: (row) => row.name, sticky: true, cell: (row) => row.name },
-          { key: 'rate', header: 'Rate', align: 'end', value: (row) => row.rate, cell: (row) => `${row.rate}%` },
+          { key: 'rate', header: 'Rate', align: 'end', value: (row) => row.rate, cell: (row) => percent(row.rate) },
           { key: 'taxableBase', header: 'Taxable base', align: 'end', value: (row) => row.taxableBase, cell: (row) => money(row.taxableBase) },
           { key: 'taxAmount', header: 'Tax', align: 'end', value: (row) => row.taxAmount, cell: (row) => <span className="font-medium tabular-nums">{money(row.taxAmount)}</span> },
         ]}

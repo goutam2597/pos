@@ -262,7 +262,22 @@ function SearchableSelect({
           {label}
         </FieldLabel>
       )}
-      <div className="relative">
+      {/*
+        ONE bordered shell holds the trigger and the clear affordance as flow
+        siblings inside a flex row. They used to be independently positioned —
+        the trigger full-width with reserved end padding, the clear button
+        absolutely offset into that padding — which left a dead band after the
+        "×" whose size changed with the field width. As siblings the gap is just
+        the shell's gap, and it cannot vary.
+      */}
+      <div
+        className={cn(
+          'relative flex w-full items-stretch rounded-[var(--radius-md)] border bg-[var(--bg-surface)] transition-colors',
+          error ? 'border-[var(--danger)]' : 'border-[var(--border-default)] hover:border-[var(--border-strong)]',
+          'focus-within:border-[var(--focus-ring)]',
+          disabled && 'cursor-not-allowed opacity-60',
+        )}
+      >
         <button
           ref={mergeRefs(triggerRef, ref)}
           type="button"
@@ -275,12 +290,10 @@ function SearchableSelect({
           onClick={() => !disabled && setOpen((o) => !o)}
           onKeyDown={onTriggerKeyDown}
           className={cn(
-            controlBase,
+            'flex min-w-0 flex-1 cursor-pointer items-center gap-2 px-3 text-start text-[13px]',
+            'outline-none focus-visible:outline-none',
             controlHeight[size],
-            'flex w-full cursor-pointer items-center gap-2 px-3 text-start',
             !selectedOption && 'text-[var(--text-disabled)]',
-            showClear && 'pe-14',
-            error && 'border-[var(--danger)]',
           )}
         >
           <span className="min-w-0 flex-1 truncate">
@@ -303,10 +316,9 @@ function SearchableSelect({
           />
         </button>
         {/*
-          The clear affordance is a SIBLING of the trigger, not a child: a button
-          inside a button is invalid HTML, double-exposes the control to screen
-          readers, and breaks strict-mode automation. It sits over the trigger's
-          reserved end padding.
+          The clear affordance is a SIBLING of the trigger, never a child: a
+          button inside a button is invalid HTML, double-exposes the control to
+          screen readers, and breaks strict-mode automation.
         */}
         {showClear && (
           <button
@@ -316,7 +328,7 @@ function SearchableSelect({
               if (value === undefined) setInternal(null);
               onChange?.('');
             }}
-            className="z-10 absolute inset-y-0 end-8 my-auto flex size-6 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-tertiary)] hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)]"
+            className="flex w-8 shrink-0 cursor-pointer items-center justify-center text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
           >
             <X size={14} strokeWidth={1.75} />
           </button>
