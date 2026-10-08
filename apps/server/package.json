@@ -16,7 +16,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "verify": "tsx scripts/e2e-check.ts",
     "verify:pricing": "tsx scripts/pricing-parity.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "contract:emit": "prisma contract emit"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -28,7 +29,7 @@
     "bcryptjs": "^3.0.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
-    "dotenv": "^17.2.3",
+    "dotenv": "17.4.2",
     "express": "^5.2.1",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",

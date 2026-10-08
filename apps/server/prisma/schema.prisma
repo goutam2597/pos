@@ -355,12 +355,11 @@ model User {
   isActive     Boolean   @default(true)
   isSuperAdmin Boolean   @default(false)
 
-  /**
-   * Branch ids this user may act in. An EMPTY array means "all branches";
-   * a non-empty array restricts them. This scalar list is the single source of
-   * truth — it is snapshotted onto AuthSession at issue time so that
-   * authorisation is one indexed read instead of a role-graph walk per request.
-   */
+  // Branch ids this user may act in. An EMPTY array means "all branches";
+// a non-empty array restricts them. This scalar list is the single source of
+// truth — it is snapshotted onto AuthSession at issue time so that
+// authorisation is one indexed read instead of a role-graph walk per request.
+//
   branchIds String[] @default([])
 
   lastLoginAt DateTime?
@@ -762,16 +761,15 @@ model StockLevel {
   branchId    String?
   productId   String
   variantId   String?
-  /**
-   * Non-null identity of the stockable item: the variant id when present,
-   * otherwise the product id.
-   *
-   * A plain UNIQUE on (warehouseId, productId, variantId) would be unsafe here
-   * because SQL treats every NULL as distinct, so a simple (variant-less)
-   * product could accumulate duplicate rows in a single warehouse. Keying on
-   * this one non-null column makes the constraint real and turns the upsert that
-   * runs on every sale and purchase into a single indexed write.
-   */
+  // Non-null identity of the stockable item: the variant id when present,
+// otherwise the product id.
+//
+// A plain UNIQUE on (warehouseId, productId, variantId) would be unsafe here
+// because SQL treats every NULL as distinct, so a simple (variant-less)
+// product could accumulate duplicate rows in a single warehouse. Keying on
+// this one non-null column makes the constraint real and turns the upsert that
+// runs on every sale and purchase into a single indexed write.
+//
   itemKey     String
 
   /// All quantities in MILLI-units.
@@ -1744,12 +1742,11 @@ model DocumentSequence {
   branchId    String?
   registerId  String?
 
-  /**
-   * Which numbering stream this row owns, collapsed into one non-null string:
-   * `"GLOBAL"`, `"BRANCH:<id>"` or `"REGISTER:<id>"`. Sequences are global,
-   * per-branch or per-till; a single non-null key keeps the uniqueness real
-   * (SQL treats NULLs as distinct) and lets `nextCode` do a one-row upsert.
-   */
+  // Which numbering stream this row owns, collapsed into one non-null string:
+// `"GLOBAL"`, `"BRANCH:<id>"` or `"REGISTER:<id>"`. Sequences are global,
+// per-branch or per-till; a single non-null key keeps the uniqueness real
+// (SQL treats NULLs as distinct) and lets `nextCode` do a one-row upsert.
+//
   scopeKey    String @default("GLOBAL")
 
   /// SALE, INVOICE, PURCHASE, RETURN, EXPENSE, PAYMENT, SHIFT, TRANSFER, COUNT
