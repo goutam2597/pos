@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 
 import { ApiError } from './api';
 import { useAuth } from './auth';
+import { normalizeRow, normalizeRows } from './normalize';
 
 /**
  * Server data access.
@@ -158,7 +159,7 @@ export function useApiList<T>(
     key,
     async (signal) => {
       const envelope = await api.request<T[]>(path, { query: clean, signal });
-      const rows = envelope.data ?? [];
+      const rows = normalizeRows(path, envelope.data ?? []);
       return { rows, meta: normalizeMeta(envelope.meta, rows.length) };
     },
     { staleTime: 15_000, ...options },
@@ -168,7 +169,11 @@ export function useApiList<T>(
 /** Convenience: GET one resource by path. */
 export function useApiGet<T>(key: QueryKey, path: string, options: QueryOptions<T> = {}) {
   const { api } = useAuth();
-  return useApiQuery<T>(key, (signal) => api.data<T>(path, { signal }), options);
+  return useApiQuery<T>(
+    key,
+    async (signal) => normalizeRow(path, (await api.data<T>(path, { signal })) as Record<string, any>) as T,
+    options,
+  );
 }
 
 // ---------------------------------------------------------------------------

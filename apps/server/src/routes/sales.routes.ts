@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma, transaction } from '../db/client.js';
-import { handler, ok, created, parseBody, parseQuery, listQuery, page } from '../lib/http.js';
+import { handler, ok, created, parseBody, parseQuery, listQuery, page, toDateSchema } from '../lib/http.js';
 import { context, assertBranchAccess } from '../lib/context.js';
 import { AppError, notFound } from '../lib/errors.js';
 import { createSale } from '../modules/sales/sale.service.js';
@@ -112,7 +112,7 @@ const listSchema = z.object({
   pageSize: z.coerce.number().int().positive().max(200).optional(),
   search: z.string().trim().max(120).optional(),
   from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
+  to: toDateSchema.optional(),
   branchId: z.string().optional(),
   registerId: z.string().optional(),
   customerId: z.string().optional(),
@@ -391,7 +391,7 @@ const invoiceListSchema = z.object({
   pageSize: z.coerce.number().int().positive().max(200).optional(),
   search: z.string().trim().max(120).optional(),
   from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
+  to: toDateSchema.optional(),
   status: z.string().optional(),
   type: z.string().optional(),
   partyId: z.string().optional(),

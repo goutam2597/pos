@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma, transaction } from '../db/client.js';
-import { handler, ok, parseQuery } from '../lib/http.js';
+import { handler, ok, parseQuery, toDateSchema } from '../lib/http.js';
 import { context } from '../lib/context.js';
 import { inventoryValue } from '../modules/inventory/stock.js';
 import { profitAndLoss, trialBalance, ACCOUNT_CODES } from '../modules/accounting/ledger.js';
@@ -24,7 +24,7 @@ export const reportsRouter = Router();
 
 const periodSchema = z.object({
   from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
+  to: toDateSchema.optional(),
   branchId: z.string().optional(),
 });
 

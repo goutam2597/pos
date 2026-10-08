@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma, transaction } from '../db/client.js';
-import { handler, ok, created, parseBody, parseQuery, listQuery, page, translateDbError } from '../lib/http.js';
+import { handler, ok, created, parseBody, parseQuery, listQuery, page, translateDbError, toDateSchema } from '../lib/http.js';
 import { context } from '../lib/context.js';
 import { AppError, notFound } from '../lib/errors.js';
 import type { AccountSubtype } from '../generated/prisma/enums.js';
@@ -28,7 +28,7 @@ export const accountingRouter = Router();
 const money = z.number().int();
 const periodSchema = z.object({
   from: z.coerce.date(),
-  to: z.coerce.date(),
+  to: toDateSchema,
   branchId: z.string().optional(),
 });
 
@@ -160,7 +160,7 @@ const journalListSchema = z.object({
   page: z.coerce.number().int().positive().optional(),
   pageSize: z.coerce.number().int().positive().max(200).optional(),
   from: z.coerce.date().optional(),
-  to: z.coerce.date().optional(),
+  to: toDateSchema.optional(),
   source: z.string().optional(),
   status: z.string().optional(),
   search: z.string().trim().max(120).optional(),
@@ -424,7 +424,7 @@ accountingRouter.get(
   '/balance-sheet',
   handler(async (req, res) => {
     const ctx = context();
-    const { to } = parseQuery(z.object({ to: z.coerce.date(), branchId: z.string().optional() }), req);
+    const { to } = parseQuery(z.object({ to: toDateSchema, branchId: z.string().optional() }), req);
 
     const balances = await transaction((tx) =>
       trialBalance(tx, ctx.businessId, new Date(0), to, null),

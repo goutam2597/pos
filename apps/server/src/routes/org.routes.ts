@@ -104,7 +104,9 @@ orgRouter.use(
       address: z.string().max(300).nullish(),
       phone: z.string().max(40).nullish(),
     }),
-    select: { id: true, code: true, name: true, type: true, isActive: true, isRetail: true, branchId: true, address: true },
+    include: {
+      branch: { select: { id: true, name: true, code: true } },
+    },
     searchFields: ['name', 'code'],
     orderBy: { name: 'asc' },
     mapCreate: (input) => input as Record<string, unknown>,

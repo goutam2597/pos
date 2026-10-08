@@ -1,5 +1,5 @@
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
-import { ZodError, type ZodSchema } from 'zod';
+import { z, ZodError, type ZodSchema } from 'zod';
 import { AppError, validation } from './errors.js';
 import { paginate, normalizeListQuery, type ListQuery, type Paginated } from '@monopos/shared';
 
@@ -81,6 +81,21 @@ export function listQuery(req: Request): {
 export function page<T>(res: Response, rows: T[], total: number, page: number, pageSize: number): void {
   ok(res, paginate(rows, total, page, pageSize).data, paginate(rows, total, page, pageSize).meta);
 }
+
+/**
+ * A `to` date for range filters.
+ *
+ * A bare date (`2026-10-08`) parses to midnight, which would silently exclude
+ * everything that happened during that day — including, on a `To = today`
+ * filter, every sale the shop has made. Extending to end of day makes the range
+ * inclusive the way every user expects, without the client having to send a
+ * timestamp it does not have.
+ */
+export const toDateSchema = z.coerce
+  .date()
+  .transform((date) => new Date(Date.UTC(
+    date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), 23, 59, 59, 999,
+  )));
 
 /**
  * Translate a known Postgres/Prisma error into the right typed application
