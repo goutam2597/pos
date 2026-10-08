@@ -594,6 +594,106 @@ reportsRouter.get(
 );
 
 // ---------------------------------------------------------------------------
+// Shift history — every till session, with its cash reconciliation
+// ---------------------------------------------------------------------------
+
+reportsRouter.get(
+  '/reports/shift-history',
+  handler(async (req, res) => {
+    const ctx = context();
+    const { from, to } = resolvePeriod(
+      parseQuery(periodSchema, req).from,
+      parseQuery(periodSchema, req).to,
+    );
+
+    const shifts = await prisma.shift.findMany({
+      where: {
+        businessId: ctx.businessId,
+        ...(ctx.branchIds.length > 0 ? { branchId: { in: ctx.branchIds } } : {}),
+        openedAt: { gte: from, lte: to },
+      },
+      orderBy: { openedAt: 'desc' },
+      take: 500,
+      select: {
+        id: true,
+        openingFloat: true,
+        expectedCash: true,
+        closingCount: true,
+        variance: true,
+        openedAt: true,
+        closedAt: true,
+        branchId: true,
+        register: { select: { id: true, name: true, code: true } },
+        branch: { select: { id: true, name: true } },
+        user: { select: { firstName: true, lastName: true } },
+      },
+    });
+
+    const ids = shifts.map((shift) => shift.id);
+
+    // Cash taken and cash removed are aggregated per shift in one pass each,
+    // rather than a query per row.
+    const [sales, refunds, movements] = await Promise.all([
+      prisma.payment.groupBy({
+        by: ['shiftId'],
+        where: { shiftId: { in: ids }, type: 'SALE', method: 'CASH', direction: 'IN', status: 'PAID' },
+        _sum: { amount: true },
+      }),
+      prisma.payment.groupBy({
+        by: ['shiftId'],
+        where: { shiftId: { in: ids }, type: 'REFUND', method: 'CASH', direction: 'OUT', status: 'PAID' },
+        _sum: { amount: true },
+      }),
+      prisma.cashMovement.groupBy({
+        by: ['shiftId'],
+        where: { shiftId: { in: ids }, type: { in: ['DROP', 'PAYOUT'] } },
+        _sum: { amount: true },
+      }),
+    ]);
+
+    const index = new Map<string, { sales: number; refunds: number; drops: number }>();
+    for (const shift of shifts) {
+      index.set(shift.id, { sales: 0, refunds: 0, drops: 0 });
+    }
+    for (const row of sales) if (index.has(row.shiftId!)) index.get(row.shiftId!)!.sales += row._sum.amount ?? 0;
+    for (const row of refunds) if (index.has(row.shiftId!)) index.get(row.shiftId!)!.refunds += row._sum.amount ?? 0;
+    for (const row of movements) if (index.has(row.shiftId!)) index.get(row.shiftId!)!.drops += row._sum.amount ?? 0;
+
+    ok(res, {
+      from,
+      to,
+      rows: shifts.map((shift) => {
+        const totals = index.get(shift.id)!;
+        // An open shift has no counted cash yet, so its "expected" is derived
+        // from the payments recorded against it rather than a stored figure.
+        const expected =
+          shift.closedAt
+            ? shift.expectedCash
+            : shift.openingFloat + totals.sales - totals.refunds - totals.drops;
+        return {
+          id: shift.id,
+          registerId: shift.register.id,
+          registerName: shift.register.name,
+          branchId: shift.branchId,
+          branchName: shift.branch?.name ?? null,
+          userName: [shift.user.firstName, shift.user.lastName].filter(Boolean).join(' ') || null,
+          openedAt: shift.openedAt.toISOString(),
+          closedAt: shift.closedAt?.toISOString() ?? null,
+          openingFloat: shift.openingFloat,
+          cashSales: totals.sales,
+          cashRefunds: totals.refunds,
+          cashDrops: totals.drops,
+          expectedCash: expected,
+          countedCash: shift.closingCount,
+          variance: shift.closedAt ? shift.variance : 0,
+          isOpen: !shift.closedAt,
+        };
+      }),
+    });
+  }),
+);
+
+// ---------------------------------------------------------------------------
 // Receivables / payables
 // ---------------------------------------------------------------------------
 

@@ -15,6 +15,8 @@ import {
 import { authMiddleware } from './modules/auth/service.js';
 import { authRouter, metaRouter } from './routes/auth.routes.js';
 import { catalogRouter } from './routes/catalog.routes.js';
+import { inventoryRouter } from './modules/inventory/routes.js';
+import { purchasingRouter } from './modules/accounting/purchasing.routes.js';
 import { partiesRouter } from './routes/parties.routes.js';
 import { salesRouter } from './routes/sales.routes.js';
 import { accountingRouter } from './routes/accounting.routes.js';
@@ -101,6 +103,11 @@ export function createApp() {
   // A till that has been offline cannot refresh its access token, so the sync
   // endpoints additionally accept an expired one and re-check the session row.
   api.use('/sync', authMiddleware({ required: true, allowExpired: true }), syncRouter);
+  // Inventory reads are defined in their own module beside the stock engine;
+  // they must mount BEFORE the catch-all catalog router or `/inventory/stock`
+  // would be swallowed by a 404.
+  api.use('/inventory', inventoryRouter);
+  api.use('/', purchasingRouter);
   api.use('/catalog', catalogRouter);
   api.use('/', catalogRouter); // flat aliases: /products, /categories, ...
   api.use('/parties', partiesRouter);
