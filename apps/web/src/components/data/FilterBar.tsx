@@ -49,7 +49,7 @@ export function FilterBar({ children, filters, active = [], onClearAll, classNam
         slack the filter selects need to stay on the same line.
       */}
       <div className="flex items-center gap-2 empty:hidden">
-        <div className="w-[15rem] shrink-0">{children}</div>
+        <div className="w-[13rem] shrink-0">{children}</div>
         {hasFilters && (
           <Button
             variant={open ? 'secondary' : 'ghost'}
@@ -96,6 +96,6 @@ export function FilterBar({ children, filters, active = [], onClearAll, classNam
 }
 
 /** Fixed-width column wrapper so filter controls line up with each other. */
-export function FilterField({ children, width = 'w-[10rem]' }: { children: ReactNode; width?: string }) {
+export function FilterField({ children, width = 'w-[9rem]' }: { children: ReactNode; width?: string }) {
   return <div className={cn('min-w-0', width)}>{children}</div>;
 }

@@ -185,7 +185,7 @@ export function PurchasesPage() {
                 options={['DRAFT', 'ORDERED', 'PART_RECEIVED', 'RECEIVED', 'CANCELLED'].map((value) => ({ value, label: value.replace('_', ' ') }))}
               />
             </FilterField>
-            <FilterField width="w-[12rem]">
+            <FilterField width="w-[9rem]">
               <SearchableSelect
                 label="Supplier"
                 placeholder="All suppliers"

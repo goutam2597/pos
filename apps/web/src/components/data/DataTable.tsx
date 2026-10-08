@@ -377,10 +377,19 @@ export function DataTable<T>({
           */}
           {toolbar && <div className="contents [&>div]:flex [&>div]:min-w-0 [&>div]:items-end [&>div]:gap-2.5 [&>div]:flex-none">{toolbar}</div>}
           {filters}
+          {/*
+            The row actions sit inline, immediately after the filters. Pushing
+            them to the trailing edge with `ms-auto` split the strip into two
+            unrelated groups and left a large void on the right; a single
+            left-packed control row reads as one toolbar.
+          */}
           {(exportable || columnItems.length > 0 || isRefetching) && (
-            <div className="ms-auto flex items-center gap-1.5">
+            /* `h-[var(--height-control)]` matches the labelled inputs so the
+               icon buttons sit on the same baseline instead of reading as a
+               second row. */
+            <div className="flex h-[var(--height-control)] items-center gap-1.5">
               {isRefetching && (
-                <span className="me-1 text-[12px] text-[var(--text-tertiary)]" aria-live="polite">
+                <span className="text-[12px] text-[var(--text-tertiary)]" aria-live="polite">
                   Refreshing…
                 </span>
               )}

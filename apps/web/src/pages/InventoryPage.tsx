@@ -258,7 +258,7 @@ function StockTab() {
         }
         filters={
           <>
-            <FilterField width="w-[12rem]">
+            <FilterField width="w-[9rem]">
               <SearchableSelect
                 label="Warehouse"
                 placeholder="All warehouses"
@@ -665,7 +665,7 @@ function ValuationTab() {
         onRetry={() => void list.refetch()}
         exportName="inventory-valuation"
         toolbar={
-          <div className="w-[14rem]">
+          <div className="w-[9rem]">
             <SearchableSelect
               label="Warehouse"
               placeholder="All warehouses"

@@ -478,7 +478,7 @@ export function UsersPage() {
           <SearchInput value={search} onValueChange={setSearch} placeholder="Search name or email" className="w-full sm:w-72" />
         }
         filters={
-          <div className="w-[10rem]">
+          <div className="w-[9rem]">
             <Select
               label="Status"
               placeholder="Any"
@@ -876,7 +876,7 @@ export function AuditPage() {
         }
         filters={
           <>
-            <div className="w-[10rem]">
+            <div className="w-[9rem]">
               <Select
                 label="Action"
                 placeholder="Any action"
