@@ -47,10 +47,13 @@ export interface SelectProps
 
 /**
  * Shape a plain-string value the way callers historically passed it.
- * Accepts `''` and `null` as "nothing selected".
+ *
+ * `''` is kept as `''` rather than collapsed to `null`, because a filter
+ * dropdown uses the empty string to mean "no filter" and the clear affordance
+ * keys off exactly that. Only `undefined`/`null` become "no value at all".
  */
 function coerce(value: unknown): string | null {
-  if (value === undefined || value === null || value === '') return null;
+  if (value === undefined || value === null) return null;
   return String(value);
 }
 

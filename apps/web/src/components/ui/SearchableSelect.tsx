@@ -231,7 +231,16 @@ function SearchableSelect({
     }
   };
 
-  const showClear = (clearable ?? !required) && selected !== null && !disabled;
+  /**
+   * Only offer "clear" when there is a selection to clear.
+   *
+   * A filter dropdown is "empty" when it holds the empty string — that is how
+   * "All categories" / "All warehouses" is represented. Comparing against
+   * `options[0]` does not work: the placeholder is often not part of the option
+   * list at all, so a genuine selection could be mistaken for the default.
+   */
+  const isMeaningfulSelection = selected !== null && selected !== '';
+  const showClear = (clearable ?? !required) && isMeaningfulSelection && !disabled;
   const panelHeight = Math.min(filtered.length, maxVisibleOptions) * OPTION_HEIGHT;
   const activeId = filtered[activeIndex] ? `${fieldId}-option-${activeIndex}` : undefined;
 
