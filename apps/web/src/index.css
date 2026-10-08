@@ -1,0 +1,317 @@
+@import 'tailwindcss';
+
+/* ===========================================================================
+   MonoPOS design tokens
+
+   One source of truth for colour, type, spacing, radius and elevation. Every
+   component consumes these; nothing hard-codes a hex value or a magic number.
+   That is what keeps 25+ screens looking like one product.
+
+   Rules encoded here, from the product brief:
+     * Boxy corners, maximum radius 8px. `--radius-*` is capped; anything
+       rounder than that is a deliberate `rounded-full` (pills, avatars).
+     * Consistent control heights (32 / 36 / 40px) so a form row lines up
+       regardless of which control the designer reached for.
+     * Light and dark are two token sets, not two themes — components never
+       branch on theme.
+     * No decorative gradients. Gradients appear only where they carry meaning
+       (a chart fill, a progress bar).
+   =========================================================================== */
+
+@theme {
+  --font-sans: 'Inter var', 'Inter', ui-sans-serif, system-ui, -apple-system,
+    'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  /* Radii — boxy by design, hard cap of 8px. */
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+
+  /* Control heights. Use these, never ad-hoc padding. */
+  --height-control-sm: 32px;
+  --height-control: 36px;
+  --height-control-lg: 40px;
+}
+
+:root {
+  color-scheme: light;
+
+  /* --- Neutrals: warm-tinted greys, not pure #808080 ---------------------- */
+  --bg-canvas: oklch(97.6% 0.005 85);
+  --bg-surface: oklch(100% 0 0);
+  --bg-raised: oklch(100% 0 0);
+  --bg-sunken: oklch(95.4% 0.007 85);
+  --bg-inset: oklch(93% 0.009 85);
+
+  --border-subtle: oklch(90.2% 0.011 85);
+  --border-default: oklch(85% 0.013 85);
+  --border-strong: oklch(74.5% 0.016 85);
+
+  --text-primary: oklch(22.5% 0.013 70);
+  --text-secondary: oklch(45.5% 0.013 70);
+  --text-tertiary: oklch(58.5% 0.013 70);
+  --text-disabled: oklch(67% 0.011 70);
+  --text-inverse: oklch(100% 0 0);
+
+  /* --- Brand: deep pine. An inked ledger green. Deliberately NOT electric
+         indigo: every generated mockup reaches for indigo. ---- */
+  --brand-50: oklch(96.5% 0.02 188);
+  --brand-100: oklch(92.5% 0.035 188);
+  --brand-200: oklch(85% 0.06 188);
+  --brand-300: oklch(75.5% 0.085 188);
+  --brand-400: oklch(64% 0.105 188);
+  --brand-500: oklch(54% 0.11 188);
+  --brand-600: oklch(46.5% 0.105 188);
+  --brand-700: oklch(39.5% 0.09 188);
+  --brand-800: oklch(33% 0.07 188);
+  --brand-900: oklch(27.5% 0.05 188);
+
+  --accent: var(--brand-600);
+  --accent-hover: var(--brand-700);
+  --accent-active: var(--brand-800);
+  --accent-subtle: var(--brand-50);
+  --accent-subtle-hover: var(--brand-100);
+  --accent-text: var(--brand-700);
+  --accent-contrast: oklch(100% 0 0);
+
+  /* --- Status -------------------------------------------------------------
+     Hue choices are deliberate: success is a green that passes 4.5:1 on
+     white, danger is a red that also passes on dark, warning is amber with
+     dark text rather than the usual low-contrast yellow. ------------------ */
+  --success: oklch(48% 0.1 160);
+  --success-subtle: oklch(94.5% 0.03 160);
+  --success-text: oklch(38% 0.09 160);
+
+  --danger: oklch(50% 0.14 25);
+  --danger-hover: oklch(44% 0.13 25);
+  --danger-subtle: oklch(95.5% 0.025 25);
+  --danger-text: oklch(41% 0.12 25);
+
+  --warning: oklch(68% 0.12 80);
+  --warning-subtle: oklch(96% 0.035 85);
+  --warning-text: oklch(42% 0.1 70);
+
+  --info: oklch(52% 0.1 240);
+  --info-subtle: oklch(95.5% 0.025 240);
+  --info-text: oklch(42% 0.1 240);
+
+  /* --- Focus ------------------------------------------------------------- */
+  --focus-ring: oklch(54% 0.11 188);
+  --focus-ring-offset: oklch(100% 0 0);
+
+  /* --- Shadows: low-contrast and tight. Depth via border first. ---------- */
+  --shadow-xs: 0 1px 2px oklch(22.5% 0.013 70 / 0.05);
+  --shadow-sm: 0 1px 3px oklch(22.5% 0.013 70 / 0.08), 0 1px 2px oklch(22.5% 0.013 70 / 0.04);
+  --shadow-md: 0 4px 10px oklch(22.5% 0.013 70 / 0.08), 0 2px 4px oklch(22.5% 0.013 70 / 0.04);
+  --shadow-lg: 0 12px 28px oklch(22.5% 0.013 70 / 0.12), 0 4px 10px oklch(22.5% 0.013 70 / 0.05);
+  --shadow-inset: inset 0 1px 2px oklch(22.5% 0.013 70 / 0.06);
+
+  /* --- Data-visualisation palette -----------------------------------------
+     Categorical colours chosen to stay distinguishable in both themes and
+     under the common forms of colour-vision deficiency: the sequence
+     alternates light/dark and blue/orange rather than sweeping the hue wheel. */
+  --chart-1: oklch(50% 0.1 190);
+  --chart-2: oklch(62% 0.11 55);
+  --chart-3: oklch(55% 0.09 165);
+  --chart-4: oklch(52% 0.09 330);
+  --chart-5: oklch(66% 0.1 85);
+  --chart-6: oklch(55% 0.09 240);
+  --chart-7: oklch(58% 0.09 145);
+  --chart-8: oklch(50% 0.1 20);
+
+  --grid-line: oklch(90.2% 0.011 85);
+}
+
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --bg-canvas: oklch(18% 0.01 70);
+  --bg-surface: oklch(22% 0.011 70);
+  --bg-raised: oklch(25.5% 0.012 70);
+  --bg-sunken: oklch(19.5% 0.01 70);
+  --bg-inset: oklch(16% 0.01 70);
+
+  --border-subtle: oklch(28% 0.012 70);
+  --border-default: oklch(32.5% 0.014 70);
+  --border-strong: oklch(42% 0.016 70);
+
+  --text-primary: oklch(94.5% 0.005 85);
+  --text-secondary: oklch(74% 0.01 85);
+  --text-tertiary: oklch(61% 0.012 85);
+  --text-disabled: oklch(51% 0.012 85);
+  --text-inverse: oklch(18% 0.01 70);
+
+  --brand-50: oklch(27% 0.05 188);
+  --brand-100: oklch(31% 0.06 188);
+  --brand-200: oklch(36% 0.07 188);
+  --brand-300: oklch(42% 0.085 188);
+  --brand-400: oklch(50% 0.1 188);
+  --brand-500: oklch(58% 0.105 188);
+  --brand-600: oklch(60% 0.105 188);
+  --brand-700: oklch(74% 0.09 188);
+  --brand-800: oklch(82% 0.07 188);
+  --brand-900: oklch(90% 0.045 188);
+
+  --accent: var(--brand-600);
+  --accent-hover: var(--brand-500);
+  --accent-active: var(--brand-400);
+  --accent-subtle: oklch(27% 0.045 188);
+  --accent-subtle-hover: oklch(32% 0.055 188);
+  --accent-text: var(--brand-700);
+  --accent-contrast: oklch(16% 0.03 188);
+
+  --success: oklch(66% 0.11 160);
+  --success-subtle: oklch(25% 0.05 160);
+  --success-text: oklch(80% 0.09 160);
+
+  --danger: oklch(64% 0.13 25);
+  --danger-hover: oklch(70% 0.12 25);
+  --danger-subtle: oklch(26% 0.06 25);
+  --danger-text: oklch(82% 0.09 25);
+
+  --warning: oklch(75% 0.11 80);
+  --warning-subtle: oklch(27% 0.05 80);
+  --warning-text: oklch(84% 0.09 85);
+
+  --info: oklch(68% 0.1 240);
+  --info-subtle: oklch(26% 0.05 240);
+  --info-text: oklch(82% 0.085 240);
+
+  --focus-ring: oklch(66% 0.11 188);
+  --focus-ring-offset: oklch(18% 0.01 70);
+
+  --shadow-xs: 0 1px 2px oklch(0% 0 0 / 0.3);
+  --shadow-sm: 0 1px 3px oklch(0% 0 0 / 0.4), 0 1px 2px oklch(0% 0 0 / 0.3);
+  --shadow-md: 0 4px 10px oklch(0% 0 0 / 0.45), 0 2px 4px oklch(0% 0 0 / 0.3);
+  --shadow-lg: 0 12px 28px oklch(0% 0 0 / 0.55), 0 4px 10px oklch(0% 0 0 / 0.35);
+  --shadow-inset: inset 0 1px 2px oklch(0% 0 0 / 0.35);
+
+  --chart-1: oklch(66% 0.1 190);
+  --chart-2: oklch(72% 0.1 55);
+  --chart-3: oklch(68% 0.085 165);
+  --chart-4: oklch(66% 0.085 330);
+  --chart-5: oklch(77% 0.09 85);
+  --chart-6: oklch(69% 0.085 240);
+  --chart-7: oklch(72% 0.085 145);
+  --chart-8: oklch(65% 0.09 20);
+
+  --grid-line: oklch(28% 0.012 70);
+}
+
+/* ===========================================================================
+   Base
+   =========================================================================== */
+
+@layer base {
+  * {
+    border-color: var(--border-subtle);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11', 'ss01';
+    font-variant-numeric: tabular-nums;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* A single, consistent focus treatment everywhere. Removing the outline and
+     replacing it per-component is how focus gets lost; this makes the default
+     correct and components only need to opt out. */
+  :focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Tabular figures everywhere: money and quantities must align in columns. */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background-color: var(--brand-200);
+    color: var(--text-primary);
+  }
+
+  /* Respect the OS reduced-motion setting. Motion is decoration; nothing in
+     this app depends on an animation to communicate state. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ===========================================================================
+   Scrollbars — unobtrusive, theme-aware.
+   =========================================================================== */
+
+@layer utilities {
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--border-strong);
+    border-radius: 9999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-tertiary);
+  }
+}
+
+/* ===========================================================================
+   Print — invoices and reports must print cleanly on a thermal or A4 printer.
+   =========================================================================== */
+
+@media print {
+  body {
+    background: white;
+    color: black;
+  }
+  .no-print,
+  nav,
+  aside,
+  header.app-header {
+    display: none !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  main {
+    padding: 0 !important;
+  }
+  @page {
+    margin: 12mm;
+  }
+}

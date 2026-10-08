@@ -1,0 +1,2205 @@
+// ============================================================================
+// MonoPOS — Prisma schema
+// ============================================================================
+//
+// CONVENTIONS (enforced throughout; see packages/shared/src/money.ts):
+//
+//   * MONEY is an `Int` of MINOR UNITS (cents/paisa). No floats, ever.
+//     Headroom per field: +/- 2,147,483,647 minor units (~21.4M major units).
+//   * QUANTITY is an `Int` of MILLI-UNITS (1.5 kg -> 1500). Same exactness
+//     discipline as money; see packages/shared/src/quantity.ts.
+//   * Every business-owned row carries `businessId` so the platform is
+//     multi-tenant and multi-branch ready without a migration later.
+//   * Everything financial is derived from documents inside a transaction
+//     (see apps/server/src/modules/accounting/ledger.ts).
+// ============================================================================
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================================
+// ORGANISATION
+// ============================================================================
+
+model Business {
+  id        String   @id @default(cuid())
+  name      String
+  legalName String?
+  code      String   @unique
+  email     String?
+  phone     String?
+  address   String?
+  city      String?
+  state     String?
+  postalCode String?
+  /// Tax registration number, printed on invoices.
+  taxNumber String?
+  country   String   @default("US")
+  timezone  String   @default("UTC")
+  /// IANA zone used to close shifts and cut fiscal periods.
+  currency  String   @default("USD")
+
+  /// Shop defaults, overridable per branch.
+  taxInclusivePricing Boolean @default(false)
+  priceIncludesTax    Boolean @default(false)
+  defaultLanguage     String   @default("en")
+  roundingMethod      String   @default("HALF_UP")
+
+  logoUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  branches    Branch[]
+  warehouses  Warehouse[]
+  registers   Register[]
+  users       User[]
+  roles       Role[]
+  categories  Category[]
+  brands      Brand[]
+  units       Unit[]
+  products    Product[]
+  employees   Employee[]
+  taxes       Tax[]
+  sales       Sale[]
+  purchases   Purchase[]
+  returns     Return[]
+  invoices    Invoice[]
+  payments    Payment[]
+  expenses    Expense[]
+  accounts    Account[]
+  journals    JournalEntry[]
+  shifts      Shift[]
+  sequences   DocumentSequence[]
+  settings    Setting[]
+  auditLogs   AuditLog[]
+  stockLevels StockLevel[]
+  stockMoves  StockMove[]
+  transfers   StockTransfer[]
+  stockCounts StockCount[]
+  languages   Language[]
+  syncOps     SyncOperation[]
+  sessions    AuthSession[]
+  fiscalPeriods FiscalPeriod[]
+  parties     Party[]
+  saleHolds   SaleHold[]
+  taxRecords  TaxRecord[]
+
+  @@index([name])
+}
+
+/// Customers and suppliers share one table because they share every field and
+/// are frequently the same legal entity (e.g. a supplier you also buy from).
+/// `PartyType` decides which module sees them.
+model Party {
+  id         String    @id @default(cuid())
+  businessId String
+  type       PartyType @default(CUSTOMER)
+  code       String?
+  name       String
+  email      String?
+  phone      String?
+  taxNumber  String?
+  address    String?
+  city       String?
+  state      String?
+  postalCode String?
+  country    String?
+  notes      String?
+
+  /// Credit terms. `creditLimit` of null means unlimited.
+  paymentTermsDays Int     @default(0)
+  creditLimit      Int?
+  openingBalance   Int     @default(0)
+
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business   Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  addresses  PartyAddress[]
+  sales      Sale[]
+  purchases  Purchase[]
+  /// A Return points at a party as EITHER a customer or a supplier depending on
+  /// its `type`, so the two relations are named to keep Prisma unambiguous.
+  customerReturns Return[]  @relation("ReturnCustomer")
+  supplierReturns Return[]  @relation("ReturnSupplier")
+  payments   Payment[]
+  expenses   Expense[]     @relation("ExpensePayee")
+  /// 1:1 profile rows, present only when this party is used in that role.
+  customerProfile Customer?
+  supplierProfile Supplier?
+  journalLines JournalLine[]
+  invoices   Invoice[]
+
+  @@unique([businessId, code])
+  @@index([businessId, type, name])
+  @@index([businessId, phone])
+  @@index([businessId, email])
+}
+
+model PartyAddress {
+  id         String  @id @default(cuid())
+  partyId    String
+  label      String  @default("Main")
+  isDefault  Boolean @default(false)
+  attention  String?
+  line1      String
+  line2      String?
+  city       String?
+  state      String?
+  postalCode String?
+  country    String?
+
+  party Party @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  @@index([partyId, isDefault])
+}
+
+/// Customer-specific attributes that only apply when `Party.type` includes
+/// CUSTOMER. Kept separate so supplier records stay clean.
+model Customer {
+  id      String @id @default(cuid())
+  partyId String @unique
+
+  tier        String        @default("RETAIL")
+  status      CustomerStatus @default(ACTIVE)
+  loyaltyPoints Int          @default(0)
+  discountRate  Int          @default(0) // basis points, e.g. 500 = 5%
+  defaultWarehouseId String?
+  /// Client-minted id, so an offline "create customer" is idempotent on sync.
+  clientTxnId String?
+
+  party Party @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([tier, status])
+  @@index([clientTxnId])
+}
+
+model Supplier {
+  id       String @id @default(cuid())
+  partyId  String @unique
+
+  isPreferred Boolean @default(false)
+  /// Lead time in days — used for reorder forecasting.
+  leadTimeDays Int    @default(0)
+  accountNumber String?
+  bankDetails   String?
+  clientTxnId   String?
+
+  party Party @relation(fields: [partyId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isPreferred])
+  @@index([clientTxnId])
+}
+
+model Employee {
+  id         String  @id @default(cuid())
+  businessId String
+  partyId    String?
+  code       String?
+  firstName  String
+  lastName   String?
+  email      String?
+  phone      String?
+  jobTitle   String?
+  department String?
+  hireDate   DateTime?
+  salary     Int?
+  isActive   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, code])
+  @@index([businessId, isActive])
+}
+
+model Branch {
+  id         String  @id @default(cuid())
+  businessId String
+  code       String
+  name       String
+  isMain     Boolean @default(false)
+  isActive   Boolean @default(true)
+
+  address   String?
+  city      String?
+  state     String?
+  postalCode String?
+  country   String?
+  phone     String?
+  email     String?
+  taxNumber String?
+
+  /// Per-branch ledger segment. When true, every journal line posted from this
+  /// branch carries the branch, enabling branch-level P&L.
+  trackBranchAccounting Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business    Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  warehouses  Warehouse[]
+  registers   Register[]
+  stockLevels StockLevel[]
+  stockMoves  StockMove[]
+  sales       Sale[]
+  purchases   Purchase[]
+  returns     Return[]
+  invoices    Invoice[]
+  payments    Payment[]
+  expenses    Expense[]
+  shifts      Shift[]
+  journalLines JournalLine[]
+  journalEntries JournalEntry[]
+  transfers   StockTransfer[]
+  stockCounts StockCount[]
+  taxRecords  TaxRecord[]
+  accounts    Account[]
+  sequences   DocumentSequence[]
+  fiscalPeriods FiscalPeriod[]
+
+  @@unique([businessId, code])
+  @@index([businessId, isActive])
+}
+
+model Warehouse {
+  id         String        @id @default(cuid())
+  businessId String
+  branchId   String?
+  code       String
+  name       String
+  type       WarehouseType @default(STORE)
+  isActive   Boolean       @default(true)
+
+  address   String?
+  city      String?
+  country   String?
+  phone     String?
+  /// Warehouses that also sell over the counter are POS pick sites.
+  isRetail  Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business    Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch      Branch?        @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  stockLevels StockLevel[]
+  stockMoves  StockMove[]
+  transfersOut StockTransfer[] @relation("TransferFrom")
+  transfersIn  StockTransfer[] @relation("TransferTo")
+  purchases   Purchase[]
+  counts      StockCount[]
+
+  @@unique([businessId, code])
+  @@index([businessId, branchId])
+}
+
+model Register {
+  id         String         @id @default(cuid())
+  businessId String
+  branchId   String
+  code       String
+  name       String
+  status     RegisterStatus @default(OPEN)
+
+  /// Cash drawer this terminal controls.
+  openingFloat Int @default(0)
+  isActive     Boolean @default(true)
+  lastSeenAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch     Branch   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  sales      Sale[]
+  shifts     Shift[]
+  sessions   AuthSession[]
+  sequences  DocumentSequence[]
+
+  @@unique([businessId, code])
+  @@index([businessId, branchId, status])
+}
+
+// ============================================================================
+// USERS, ROLES, PERMISSIONS
+// ============================================================================
+
+model User {
+  id           String    @id @default(cuid())
+  businessId   String
+  email        String
+  passwordHash String
+  firstName    String
+  lastName     String?
+  phone        String?
+  avatarUrl    String?
+  locale       String    @default("en")
+  isActive     Boolean   @default(true)
+  isSuperAdmin Boolean   @default(false)
+
+  /**
+   * Branch ids this user may act in. An EMPTY array means "all branches";
+   * a non-empty array restricts them. This scalar list is the single source of
+   * truth — it is snapshotted onto AuthSession at issue time so that
+   * authorisation is one indexed read instead of a role-graph walk per request.
+   */
+  branchIds String[] @default([])
+
+  lastLoginAt DateTime?
+  passwordChangedAt DateTime @default(now())
+  /// Bumped on password change / "log out everywhere" to invalidate JWTs.
+  tokenVersion  Int      @default(0)
+  failedLoginAttempts Int @default(0)
+  lockedUntil   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business      Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  roles         UserRole[]
+  sessions      AuthSession[]
+  sales         Sale[]
+  purchases     Purchase[]
+  payments      Payment[]
+  expenses      Expense[]
+  journalEntries JournalEntry[]
+  shifts        Shift[]
+  stockMoves    StockMove[]
+  auditLogs     AuditLog[]
+  stockCounts   StockCount[]
+  returns       Return[]
+  cashMovements CashMovement[]
+  /// Expenses this user approved, as opposed to merely raised.
+  approvedExpenses Expense[] @relation("ExpenseApprover")
+
+  @@unique([email])
+  @@index([businessId, isActive])
+  @@index([businessId])
+}
+
+model Role {
+  id          String  @id @default(cuid())
+  businessId  String
+  /// NULL for the built-in system roles, which are seeded per business.
+  name        String
+  slug        String
+  description String?
+  isSystem    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business      Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  permissions   RolePermission[]
+  users         UserRole[]
+
+  @@unique([businessId, slug])
+  @@index([businessId])
+}
+
+model Permission {
+  id          String @id @default(cuid())
+  resource    String
+  action      String
+  description String?
+
+  roles RolePermission[]
+
+  @@unique([resource, action])
+  @@index([resource])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model UserRole {
+  userId String
+  roleId String
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model AuthSession {
+  id        String   @id @default(cuid())
+  businessId String
+  userId    String
+  registerId String?
+  /// Refresh tokens are stored hashed; the raw token never touches the DB.
+  refreshTokenHash String @unique
+  userAgent String?
+  ipAddress String?
+  /// Snapshot of the user's branch scope and permissions at issue time, so a
+  /// permission change takes effect on the next request without re-querying
+  /// the role graph on every call.
+  permissions String[]
+  branchIds   String[]
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  register Register? @relation(fields: [registerId], references: [id], onDelete: SetNull)
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+}
+
+// ============================================================================
+// CATALOG
+// ============================================================================
+
+model Category {
+  id         String  @id @default(cuid())
+  businessId String
+  parentId   String?
+  name       String
+  slug       String
+  description String?
+  imageUrl   String?
+  sortOrder  Int     @default(0)
+  isActive   Boolean @default(true)
+
+  /// Inherit the parent's tax instead of using `taxId` directly.
+  taxId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  parent    Category?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children  Category[] @relation("CategoryTree")
+  products  Product[]
+  tax       Tax?       @relation(fields: [taxId], references: [id], onDelete: SetNull)
+
+  @@unique([businessId, slug])
+  @@index([businessId, parentId])
+  @@index([businessId, isActive])
+}
+
+model Brand {
+  id         String  @id @default(cuid())
+  businessId String
+  name       String
+  slug       String
+  logoUrl    String?
+  description String?
+  isActive   Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@unique([businessId, slug])
+  @@index([businessId, isActive])
+}
+
+/// Units of measure. `allowFraction` gates whether the UI permits decimal qty;
+/// `conversionFactor` (milli) converts to this unit's base for pricing maths.
+model Unit {
+  id           String  @id @default(cuid())
+  businessId   String
+  name         String
+  code         String
+  plural       String?
+  allowFraction Boolean @default(true)
+  /// Quantity in MILLI-units of the base unit that equals 1 of this unit.
+  /// e.g. a "box" of 12 -> 12000 when the base unit is "each".
+  conversionFactor Int @default(1000)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  products  Product[]
+
+  @@unique([businessId, code])
+  @@index([businessId])
+}
+
+model Tax {
+  id          String    @id @default(cuid())
+  businessId  String
+  name        String
+  code        String
+  /// Basis points to support fractional rates: 2000 = 20%. For FIXED taxes this
+  /// is unused and `fixedAmount` applies.
+  rate        Int       @default(0)
+  fixedAmount Int       @default(0)
+  type        TaxType   @default(PERCENTAGE)
+  scope       TaxScope  @default(SALE)
+  /// Sales above this threshold are exempt (US-style marketplace thresholds).
+  exemptAbove Int?
+  isActive    Boolean   @default(true)
+  isDefault   Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business   Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  categories Category[]
+  products   Product[]
+  saleItems  SaleItem[]
+  purchaseItems PurchaseItem[]
+  invoiceLines InvoiceLine[]
+  taxRecords TaxRecord[]
+
+  @@unique([businessId, code])
+  @@index([businessId, isActive])
+}
+
+model Product {
+  id          String       @id @default(cuid())
+  businessId  String
+  type        ProductType  @default(SIMPLE)
+  status      ProductStatus @default(ACTIVE)
+
+  sku          String?
+  barcode      String?
+  name         String
+  description  String?
+  categoryId   String?
+  brandId      String?
+  unitId       String?
+  taxId        String?
+
+  /// Sell price in minor units. For VARIANT products this is the default and
+  /// each variant overrides it.
+  price           Int    @default(0)
+  costPrice       Int    @default(0)
+  compareAtPrice  Int?
+  /// Costing method for COGS and stock valuation.
+  costingMethod   CostingMethod @default(AVERAGE)
+
+  trackInventory Boolean @default(true)
+  /// Sellable without stock on hand (services, back-orderable goods).
+  allowBackorder Boolean @default(false)
+  allowNegativeStock Boolean @default(false)
+
+  weightMilli Int @default(0)
+  lengthMilli Int @default(0)
+  widthMilli  Int @default(0)
+  heightMilli Int @default(0)
+
+  imageUrl String?
+  sortOrder Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business   Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category   Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  brand      Brand?      @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  unit       Unit?       @relation(fields: [unitId], references: [id], onDelete: SetNull)
+  tax        Tax?        @relation(fields: [taxId], references: [id], onDelete: SetNull)
+  variants   ProductVariant[]
+  options    ProductOption[]
+  stockLevels StockLevel[]
+  stockMoves  StockMove[]
+  countLines  StockCountLine[]
+  journalLines JournalLine[]
+  saleItems   SaleItem[]
+  purchaseItems PurchaseItem[]
+  invoiceLines InvoiceLine[]
+  returnItems  ReturnItem[]
+  transfersFrom StockTransferLine[] @relation("TransferProduct")
+  bundleItems  BundleItem[] @relation("BundleParent")
+
+  @@unique([businessId, sku])
+  @@index([businessId, status])
+  @@index([businessId, categoryId])
+  @@index([businessId, brandId])
+  @@index([barcode])
+  @@index([businessId, name])
+}
+
+/// Options and values drive variant matrices (size x colour -> SKUs).
+model ProductOption {
+  id        String @id @default(cuid())
+  productId String
+  name      String
+  position  Int    @default(0)
+
+  product Product           @relation(fields: [productId], references: [id], onDelete: Cascade)
+  values  ProductOptionValue[]
+  variants ProductVariant[] @relation("VariantDefinedByOption")
+
+  @@unique([productId, name])
+  @@index([productId])
+}
+
+model ProductOptionValue {
+  id       String @id @default(cuid())
+  optionId String
+  value    String
+  position Int    @default(0)
+
+  option   ProductOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  variants ProductVariantOption[]
+
+  @@unique([optionId, value])
+  @@index([optionId])
+}
+
+model ProductVariant {
+  id        String @id @default(cuid())
+  productId String
+  sku       String?
+  barcode   String?
+  name      String? // e.g. "Large / Red"; falls back to option values
+
+  price          Int @default(0)
+  costPrice      Int @default(0)
+  compareAtPrice Int?
+
+  /// Set once per variant per warehouse to override the parent reorder point.
+  reorderPointMilli Int @default(0)
+  reorderQtyMilli   Int @default(0)
+
+  imageUrl  String?
+  position  Int    @default(0)
+  isActive  Boolean @default(true)
+
+  /// Client-minted id for offline-created variants.
+  clientTxnId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  options   ProductVariantOption[]
+  /// The option rows this particular variant is built from (e.g. Size=Large,
+  /// Colour=Red). Inverses `ProductOption.variants`.
+  definedBy ProductOption[] @relation("VariantDefinedByOption")
+  stockLevels StockLevel[]
+  stockMoves  StockMove[]
+  countLines  StockCountLine[]
+  transferLines StockTransferLine[]
+  bundleItems BundleItem[] @relation("BundleChild")
+  saleItems   SaleItem[]
+  purchaseItems PurchaseItem[]
+  invoiceLines InvoiceLine[]
+  returnItems  ReturnItem[]
+
+  @@unique([productId, sku])
+  @@index([barcode])
+  @@index([productId])
+  @@index([clientTxnId])
+}
+
+model ProductVariantOption {
+  variantId String
+  valueId   String
+
+  variant ProductVariant     @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  value   ProductOptionValue @relation(fields: [valueId], references: [id], onDelete: Cascade)
+
+  @@id([variantId, valueId])
+  @@index([valueId])
+}
+
+/// A sellable kit: buying the parent decrements the children.
+model BundleItem {
+  id        String @id @default(cuid())
+  /// The sellable kit. Always a Product...
+  productId String
+  /// ...optionally narrowed to one variant of it (e.g. the "Large" bundle).
+  variantId String?
+  qtyMilli  Int    @default(1000)
+  position  Int    @default(0)
+
+  product Product         @relation("BundleParent", fields: [productId], references: [id], onDelete: Cascade)
+  variant ProductVariant? @relation("BundleChild", fields: [variantId], references: [id])
+
+  @@index([productId])
+  @@index([variantId])
+}
+
+// ============================================================================
+// INVENTORY
+// ============================================================================
+
+/// Current stock position for one sellable item in one warehouse. This is the
+/// hot, mutable read path; `StockMove` is the immutable audit trail and the
+/// two are reconciled by a consistency check.
+model StockLevel {
+  id          String @id @default(cuid())
+  businessId  String
+  warehouseId String
+  branchId    String?
+  productId   String
+  variantId   String?
+  /**
+   * Non-null identity of the stockable item: the variant id when present,
+   * otherwise the product id.
+   *
+   * A plain UNIQUE on (warehouseId, productId, variantId) would be unsafe here
+   * because SQL treats every NULL as distinct, so a simple (variant-less)
+   * product could accumulate duplicate rows in a single warehouse. Keying on
+   * this one non-null column makes the constraint real and turns the upsert that
+   * runs on every sale and purchase into a single indexed write.
+   */
+  itemKey     String
+
+  /// All quantities in MILLI-units.
+  qtyOnHand  Int @default(0)
+  qtyReserved Int @default(0)
+  /// Weighted average cost per base unit, in minor units.
+  averageCost Int @default(0)
+  /// Last physical unit cost — used by LIFETIME and STANDARD costing.
+  lastCost   Int @default(0)
+
+  reorderPointMilli Int @default(0)
+  reorderQtyMilli   Int @default(0)
+
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  business  Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  warehouse Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  branch    Branch?         @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([warehouseId, itemKey])
+  @@index([businessId, warehouseId])
+  @@index([businessId, branchId])
+  @@index([productId])
+}
+
+/// Immutable ledger of every stock movement. Never updated, only appended.
+/// Reconciling `sum(StockMove.deltaQty)` against `StockLevel.qtyOnHand` is the
+/// integrity check run by `npm run test -w @monopos/server`.
+model StockMove {
+  id         String @id @default(cuid())
+  businessId String
+  branchId   String?
+  warehouseId String
+  productId  String
+  variantId  String?
+
+  type        StockMoveType
+  referenceType StockReferenceType?
+  referenceId String?
+  referenceNo String?
+
+  /// Signed change in MILLI-units. Negative for outbound.
+  qtyMilli  Int
+  /// Unit cost at the time of the move, in minor units. For outbound moves this
+  /// is the COGS figure that gets posted to the ledger.
+  unitCost  Int @default(0)
+  /// Total value in minor units (abs(qtyMilli) * unitCost / 1000).
+  value     Int @default(0)
+
+  balanceAfterMilli Int
+
+  note      String?
+  createdById String?
+  createdAt DateTime @default(now())
+
+  business  Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch    Branch?         @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  warehouse Warehouse       @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+  product   Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  createdBy User?           @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([businessId, warehouseId, productId])
+  @@index([productId, variantId])
+  @@index([referenceType, referenceId])
+  @@index([businessId, createdAt])
+  @@index([businessId, type])
+}
+
+model StockTransfer {
+  id         String         @id @default(cuid())
+  businessId String
+  code       String
+  status     TransferStatus @default(DRAFT)
+  fromWarehouseId String
+  toWarehouseId   String
+  branchId   String?
+
+  note       String?
+  shippedAt  DateTime?
+  receivedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business      Business            @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  fromWarehouse Warehouse           @relation("TransferFrom", fields: [fromWarehouseId], references: [id])
+  toWarehouse   Warehouse           @relation("TransferTo", fields: [toWarehouseId], references: [id])
+  branch        Branch?             @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  lines         StockTransferLine[]
+
+  @@unique([businessId, code])
+  @@index([businessId, status])
+}
+
+model StockTransferLine {
+  id         String @id @default(cuid())
+  transferId String
+  productId  String
+  variantId  String?
+  qtyMilli   Int
+
+  transfer StockTransfer   @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  product  Product         @relation("TransferProduct", fields: [productId], references: [id])
+  variant  ProductVariant? @relation(fields: [variantId], references: [id])
+
+  @@index([transferId])
+}
+
+/// Physical stocktake. Differences post stock adjustments AND a COGS/expense
+/// journal, which is why a stocktake is a financial event and not just a count.
+model StockCount {
+  id         String @id @default(cuid())
+  businessId String
+  warehouseId String
+  branchId   String?
+  code       String
+  status     String  @default("DRAFT") // DRAFT | POSTED | CANCELLED
+  note       String?
+  postedAt   DateTime?
+
+  createdById String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business   Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  warehouse  Warehouse         @relation(fields: [warehouseId], references: [id])
+  branch     Branch?           @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  createdBy  User?             @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  lines      StockCountLine[]
+
+  @@unique([businessId, code])
+  @@index([businessId, warehouseId, status])
+}
+
+model StockCountLine {
+  id        String @id @default(cuid())
+  countId   String
+  productId String
+  variantId String?
+
+  systemQtyMilli Int
+  countedQtyMilli Int
+  varianceMilli   Int @default(0)
+  unitCost        Int @default(0)
+  note            String?
+
+  count   StockCount      @relation(fields: [countId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id])
+
+  @@index([countId])
+}
+
+// ============================================================================
+// SALES
+// ============================================================================
+
+model Sale {
+  id         String     @id @default(cuid())
+  businessId String
+  branchId   String
+  registerId String?
+  userId     String?
+  customerId String?
+  /// The cash shift this sale was rung up in, for drawer reconciliation.
+  shiftId    String?
+
+  code       String
+  status     SaleStatus @default(COMPLETED)
+  channel    SaleChannel @default(POS)
+
+  /// Positively identified as captured on a disconnected terminal. Minted by the
+  /// client BEFORE the first push attempt — this column is the idempotency key
+  /// that makes offline replay safe.
+  clientTxnId String?
+
+  /// Client wall-clock at capture, preserved through sync so offline sales sort
+  /// into the right trading day even if they sync hours later.
+  capturedAt DateTime?
+  occurredAt DateTime  @default(now())
+
+  subtotal       Int @default(0)
+  discountTotal  Int @default(0)
+  taxTotal       Int @default(0)
+  roundingTotal  Int @default(0)
+  total          Int @default(0)
+  costTotal      Int @default(0)
+  profitTotal    Int @default(0)
+  paidTotal      Int @default(0)
+  refundedTotal  Int @default(0)
+  balanceDue     Int @default(0)
+  costOfGoods    Int @default(0)
+
+  note       String?
+  customerNote String?
+
+  /// Snapshot of the cashier's location/name at capture, so an offline sale
+  /// still shows the right terminal after the device is re-imaged.
+  registerLabel String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business  Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch    Branch      @relation(fields: [branchId], references: [id])
+  register  Register?   @relation(fields: [registerId], references: [id], onDelete: SetNull)
+  shift     Shift?      @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  customer  Party?      @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items     SaleItem[]
+  payments  Payment[]
+  invoice   Invoice?
+  returns   Return[]
+  journalEntries JournalEntry[]
+  holds     SaleHold[]
+
+  @@unique([businessId, code])
+  @@unique([businessId, clientTxnId])
+  @@index([businessId, occurredAt])
+  @@index([branchId, occurredAt])
+  @@index([businessId, status])
+  @@index([customerId])
+  @@index([businessId, channel])
+  @@index([registerId])
+}
+
+model SaleItem {
+  id         String @id @default(cuid())
+  /// Carried denormalised from the sale so line-level sync scoping and
+  /// per-product profitability queries stay a single indexed read.
+  businessId String
+  saleId     String
+  productId  String
+  variantId  String?
+
+  /// Denormalised at capture. Historical invoices must never change when the
+  /// product is later renamed, re-taxed or repriced.
+  productName String
+  variantName String?
+  sku         String?
+  unitName    String?
+
+  /// All money in minor units, all quantity in milli-units.
+  qtyMilli        Int
+  unitPrice       Int
+  /// This line only.
+  discountType    String  @default("NONE") // NONE | PERCENT | FIXED
+  discountValue   Int     @default(0) // basis points for PERCENT, minor for FIXED
+  discountAmount  Int     @default(0)
+  taxId           String?
+  taxRate         Int     @default(0)
+  taxAmount       Int     @default(0)
+  /// Total discount applied at cart level, apportioned onto this line so that
+  /// per-line tax is computed on the amount actually charged.
+  allocatedDiscount Int   @default(0)
+  lineSubtotal    Int     @default(0)
+  lineTax         Int     @default(0)
+  lineTotal       Int     @default(0)
+  unitCost        Int     @default(0)
+  lineCost        Int     @default(0)
+  warehouseId     String?
+
+  position Int @default(0)
+  note     String?
+
+  createdAt DateTime @default(now())
+
+  sale    Sale            @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product Product         @relation(fields: [productId], references: [id])
+  variant ProductVariant? @relation(fields: [variantId], references: [id])
+  tax     Tax?            @relation(fields: [taxId], references: [id])
+  returns ReturnItem[]
+
+  @@index([saleId, position])
+  @@index([productId])
+  @@index([businessId, productId])
+}
+
+/// Parked carts. `SaleHold` is what makes "hold this sale and come back to it"
+/// work offline: the payload lives in IndexedDB and syncs later.
+model SaleHold {
+  id          String  @id @default(cuid())
+  businessId  String
+  branchId    String
+  saleId      String?
+  label       String
+  payload     Json
+  clientTxnId String?
+
+  expiresAt DateTime?
+  createdAt DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sale     Sale?    @relation(fields: [saleId], references: [id], onDelete: Cascade)
+
+  @@index([businessId, branchId, createdAt])
+  @@index([clientTxnId])
+}
+
+// ============================================================================
+// PURCHASES
+// ============================================================================
+
+model Purchase {
+  id         String @id @default(cuid())
+  businessId String
+  branchId   String
+  supplierId String?
+  userId     String?
+  warehouseId String?
+
+  code         String
+  /// The supplier's own document number — must round-trip for reconciliation.
+  supplierRef  String?
+  status       String @default("DRAFT") // DRAFT | ORDERED | PART_RECEIVED | RECEIVED | CANCELLED | RETURNED
+  invoiceDate  DateTime @default(now())
+  expectedDate DateTime?
+  receivedAt   DateTime?
+
+  subtotal      Int @default(0)
+  discountTotal Int @default(0)
+  taxTotal      Int @default(0)
+  total         Int @default(0)
+  paidTotal     Int @default(0)
+  balanceDue    Int @default(0)
+
+  note      String?
+  terms     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business  Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch    Branch         @relation(fields: [branchId], references: [id])
+  supplier  Party?         @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  user      User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  warehouse Warehouse?     @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  items     PurchaseItem[]
+  payments  Payment[]
+  invoice   Invoice?
+  returns   Return[]
+  journalEntries JournalEntry[]
+
+  @@unique([businessId, code])
+  @@index([businessId, invoiceDate])
+  @@index([supplierId, status])
+  @@index([branchId])
+}
+
+model PurchaseItem {
+  id         String @id @default(cuid())
+  purchaseId String
+  productId  String
+  variantId  String?
+  warehouseId String?
+
+  productName String
+  variantName String?
+  sku         String?
+
+  qtyMilli      Int
+  qtyReceivedMilli Int @default(0)
+  unitCost      Int
+  discountAmount Int @default(0)
+  taxId         String?
+  taxRate       Int     @default(0)
+  taxAmount     Int     @default(0)
+  lineSubtotal  Int     @default(0)
+  lineTotal     Int     @default(0)
+
+  position Int @default(0)
+  note     String?
+
+  createdAt DateTime @default(now())
+
+  purchase Purchase        @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  product  Product         @relation(fields: [productId], references: [id])
+  variant  ProductVariant? @relation(fields: [variantId], references: [id])
+  tax      Tax?            @relation(fields: [taxId], references: [id])
+  returns  ReturnItem[]
+
+  @@index([purchaseId, position])
+  @@index([productId])
+}
+
+// ============================================================================
+// RETURNS
+// ============================================================================
+
+model Return {
+  id          String @id @default(cuid())
+  businessId  String
+  branchId    String
+  type        ReturnType
+  status      ReturnStatus @default(REQUESTED)
+  customerId  String?   // for SALE_RETURN
+  supplierId  String?   // for PURCHASE_RETURN
+  saleId      String?
+  purchaseId  String?
+  userId      String?
+
+  code        String
+  returnDate  DateTime @default(now())
+
+  subtotal Int @default(0)
+  taxTotal Int @default(0)
+  total    Int @default(0)
+  refundedTotal Int @default(0)
+  /// For restocking decisions: true once goods are physically back on the shelf.
+  restock  Boolean @default(true)
+
+  note     String?
+  reason   String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch    Branch     @relation(fields: [branchId], references: [id])
+  customer  Party?     @relation("ReturnCustomer", fields: [customerId], references: [id], onDelete: SetNull)
+  supplier  Party?     @relation("ReturnSupplier", fields: [supplierId], references: [id], onDelete: SetNull)
+  sale      Sale?      @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  purchase  Purchase?  @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  user      User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items     ReturnItem[]
+  payments  Payment[]
+  invoice   Invoice?
+  journalEntries JournalEntry[]
+
+  @@unique([businessId, code])
+  @@index([businessId, returnDate])
+  @@index([businessId, status])
+}
+
+model ReturnItem {
+  id          String @id @default(cuid())
+  returnId    String
+  saleItemId  String?
+  purchaseItemId String?
+  productId   String
+  variantId   String?
+
+  productName String
+  sku         String?
+  qtyMilli    Int
+  unitPrice   Int
+  taxRate     Int @default(0)
+  taxAmount   Int @default(0)
+  lineSubtotal Int @default(0)
+  lineTotal   Int @default(0)
+  unitCost    Int @default(0)
+  /// Return to quarantine instead of selling stock.
+  toQuarantine Boolean @default(false)
+
+  position Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  return       Return          @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  saleItem     SaleItem?       @relation(fields: [saleItemId], references: [id], onDelete: SetNull)
+  purchaseItem PurchaseItem?   @relation(fields: [purchaseItemId], references: [id], onDelete: SetNull)
+  product      Product         @relation(fields: [productId], references: [id])
+  variant      ProductVariant? @relation(fields: [variantId], references: [id])
+
+  @@index([returnId])
+  @@index([productId])
+}
+
+// ============================================================================
+// INVOICING
+// ============================================================================
+
+/// An invoice is the FINANCIAL document: numbering, payment status and the
+/// amount the customer owes. It projects a source document 1:1 rather than
+/// copying its lines — an issued invoice and its sale are two views of the same
+/// facts, not two copies of them.
+model Invoice {
+  id          String @id @default(cuid())
+  businessId  String
+  branchId    String?
+  code        String
+  type        InvoiceType @default(SALE)
+  status      InvoiceStatus @default(ISSUED)
+
+  /// The operational document this invoice represents. At most one of these is
+  /// set; standalone credit notes and proformas carry `InvoiceLine`s instead.
+  saleId     String? @unique
+  purchaseId String? @unique
+  returnId   String? @unique
+
+  partyId    String?
+  saleItemIdUniq String?
+
+  issueDate   DateTime @default(now())
+  dueDate     DateTime?
+  deliveredAt DateTime?
+
+  currency    String @default("USD")
+
+  // Header-level denormalisation. Denormalised deliberately: invoice lists,
+  // AR ageing and printed PDFs must never re-derive totals from live line items
+  // that may since have been edited.
+  subtotal      Int @default(0)
+  discountTotal Int @default(0)
+  taxTotal      Int @default(0)
+  shippingTotal Int @default(0)
+  roundingTotal Int @default(0)
+  total         Int @default(0)
+  paidTotal     Int @default(0)
+  refundedTotal Int @default(0)
+  balanceDue    Int @default(0)
+
+  notes       String?
+  terms       String?
+  footer      String?
+  /// Number of times a PDF has been produced — useful for dispute forensics.
+  printCount  Int @default(0)
+  lastPrintedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business  Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch    Branch?         @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  sale      Sale?           @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  purchase  Purchase?       @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  return    Return?         @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  party     Party?          @relation(fields: [partyId], references: [id], onDelete: SetNull)
+  lines     InvoiceLine[]
+  payments  Payment[]
+
+  @@unique([businessId, code])
+  @@index([businessId, issueDate])
+  @@index([partyId, status])
+  @@index([businessId, status])
+  @@index([type])
+  @@index([dueDate])
+}
+
+/// Lines exist only for invoices with no source document (credit notes,
+/// proformas, debit notes). Sourced invoices read their lines from the source.
+model InvoiceLine {
+  id         String @id @default(cuid())
+  invoiceId  String
+  productId  String?
+  variantId  String?
+  taxId      String?
+
+  description String
+  productName String?
+  sku         String?
+  unitName    String?
+
+  qtyMilli   Int
+  unitPrice  Int
+  discountAmount Int @default(0)
+  taxRate    Int @default(0)
+  taxAmount  Int @default(0)
+  lineSubtotal Int @default(0)
+  lineTotal  Int @default(0)
+
+  position Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  invoice Invoice         @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variant ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  tax     Tax?            @relation(fields: [taxId], references: [id], onDelete: SetNull)
+
+  @@index([invoiceId, position])
+}
+
+// ============================================================================
+// PAYMENTS
+// ============================================================================
+
+model Payment {
+  id          String @id @default(cuid())
+  businessId  String
+  branchId    String?
+
+  type        PaymentType
+  method      PaymentMethod
+  status      PaymentStatus @default(PAID)
+  /// IN increases cash/bank, OUT decreases it.
+  direction   String  @default("IN") // IN | OUT
+
+  amount      Int
+  fee         Int @default(0)
+  currency    String @default("USD")
+  /// Rate actually applied for multi-currency settlement, in basis points.
+  exchangeRate Int?
+
+  partyId     String?
+  saleId      String?
+  purchaseId  String?
+  expenseId   String?
+  returnId    String?
+  invoiceId   String?
+  accountId   String?
+  shiftId     String?
+  userId      String?
+
+  /// Gateway / acquirer reference (Stripe, PayPal, terminal serial).
+  reference   String?
+  cardLast4   String?
+  approvalCode String?
+  chequeNo    String?
+
+  /// Minted by the POS client at capture; UNIQUE per business so replaying an
+  /// offline payment cannot double-deduct a drawer.
+  clientTxnId String?
+
+  note        String?
+  paidAt      DateTime @default(now())
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business  Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch    Branch?   @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  party     Party?    @relation(fields: [partyId], references: [id], onDelete: SetNull)
+  sale      Sale?     @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  purchase  Purchase? @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  expense   Expense?  @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  return    Return?   @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  invoice   Invoice?  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  account   Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  shift     Shift?    @relation(fields: [shiftId], references: [id], onDelete: SetNull)
+  user      User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@unique([businessId, clientTxnId])
+  @@index([businessId, paidAt])
+  @@index([partyId, status])
+  @@index([saleId])
+  @@index([invoiceId])
+  @@index([accountId])
+}
+
+// ============================================================================
+// EXPENSES
+// ============================================================================
+
+model Expense {
+  id          String @id @default(cuid())
+  businessId  String
+  branchId    String?
+  userId      String?
+
+  code        String
+  category    String?
+  description String
+  status      ExpenseStatus @default(SUBMITTED)
+  expenseDate DateTime @default(now())
+
+  /// Payee when it is not a supplier in the system.
+  payeeName   String?
+  payeePartyId String?
+
+  subtotal    Int @default(0)
+  taxTotal    Int @default(0)
+  total       Int @default(0)
+  paidTotal   Int @default(0)
+  balanceDue  Int @default(0)
+
+  /// Account debited. Resolved from the first line when not set explicitly.
+  accountId   String?
+
+  reference   String?
+  note        String?
+  approvedById String?
+  approvedAt  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business  Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch    Branch?     @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  account   Account?    @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  payeeParty Party?     @relation("ExpensePayee", fields: [payeePartyId], references: [id], onDelete: SetNull)
+  approvedBy User?      @relation("ExpenseApprover", fields: [approvedById], references: [id], onDelete: SetNull)
+  items     ExpenseItem[]
+  payments  Payment[]
+
+  @@unique([businessId, code])
+  @@index([businessId, expenseDate])
+  @@index([status])
+  @@index([branchId])
+}
+
+model ExpenseItem {
+  id         String @id @default(cuid())
+  expenseId  String
+  accountId  String?
+  description String
+  category   String?
+  amount     Int
+  taxAmount  Int @default(0)
+  note       String?
+  position   Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  expense Expense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+  account Account? @relation(fields: [accountId], references: [id], onDelete: SetNull)
+
+  @@index([expenseId])
+}
+
+// ============================================================================
+// ACCOUNTING
+// ============================================================================
+
+model Account {
+  id          String      @id @default(cuid())
+  businessId  String
+  branchId    String?     // set only for branch-scoped accounts
+  code        String
+  name        String
+  type        AccountType
+  subtype     AccountSubtype?
+  description String?
+
+  isActive    Boolean @default(true)
+  /// System accounts cannot be deleted or re-typed — sales, cash and tax flows
+  /// reference them by code.
+  isSystem    Boolean @default(false)
+  /// Cash/bank accounts accept payments directly.
+  isCash      Boolean @default(false)
+
+  /// Currency this account is denominated in. Mixed-currency ledgers are out of
+  /// scope for v1; the column exists so the constraint can be added later.
+  currency    String @default("USD")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business   Business    @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch     Branch?     @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  lines      JournalLine[]
+  payments   Payment[]
+  expenseItems ExpenseItem[]
+  expenses   Expense[]
+  taxLines   TaxRecord[]
+
+  @@unique([businessId, code])
+  @@unique([businessId, branchId, code])
+  @@index([businessId, type])
+  @@index([businessId, isActive])
+}
+
+/// The immutable double-entry record. Every sale, purchase, payment, refund and
+/// expense produces exactly one posted journal; the ledger is the only source
+/// of truth for the P&L and balance sheet.
+model JournalEntry {
+  id          String        @id @default(cuid())
+  businessId  String
+  branchId    String?
+  code        String
+  date        DateTime      @default(now())
+  status      JournalStatus @default(POSTED)
+  source      JournalSource @default(MANUAL)
+  memo        String?
+
+  referenceType String?
+  referenceId   String?
+
+  /// The operational document this entry was generated from. A sale normally
+  /// produces two entries (revenue and COGS), so these are one-to-many.
+  saleId     String?
+  purchaseId String?
+  returnId   String?
+
+  /// Set when this entry reverses an earlier one, so voids stay traceable and
+  /// the original is never edited or deleted. A journal can be reversed exactly
+  /// once, hence the uniqueness.
+  reversesId   String? @unique
+  reversedById String? @unique
+
+  totalDebit  Int @default(0)
+  totalCredit Int @default(0)
+
+  createdById String?
+  postedAt    DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business  Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch    Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  createdBy User?        @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  lines     JournalLine[]
+  reverses  JournalEntry?  @relation("JournalReversal", fields: [reversesId], references: [id], onDelete: SetNull)
+  reversedBy JournalEntry? @relation("JournalReversal")
+  sale       Sale?        @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  purchase   Purchase?    @relation(fields: [purchaseId], references: [id], onDelete: SetNull)
+  returnDoc  Return?      @relation(fields: [returnId], references: [id], onDelete: SetNull)
+  taxRecords TaxRecord[]
+
+  @@unique([businessId, code])
+  @@index([businessId, date])
+  @@index([status])
+  @@index([referenceType, referenceId])
+  @@index([branchId, date])
+  @@index([saleId])
+  @@index([purchaseId])
+  @@index([returnId])
+}
+
+model JournalLine {
+  id        String @id @default(cuid())
+  entryId   String
+  accountId String
+  branchId  String?
+  partyId   String?
+  productId String?
+
+  /// Minor units. Exactly one of debit/credit is non-zero on a posted entry.
+  debit  Int @default(0)
+  credit Int @default(0)
+  /// Signed running balance for this account after the line, in minor units.
+  balance Int @default(0)
+
+  memo      String?
+  position  Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  entry   JournalEntry @relation(fields: [entryId], references: [id], onDelete: Cascade)
+  account Account      @relation(fields: [accountId], references: [id])
+  branch  Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  party   Party?       @relation(fields: [partyId], references: [id], onDelete: SetNull)
+  product Product?     @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([entryId])
+  @@index([accountId, id])
+  @@index([partyId])
+  @@index([branchId])
+}
+
+/// Tax authority reporting. Materialised per sale/purchase line so period tax
+/// returns never depend on the current catalog rate.
+model TaxRecord {
+  id        String @id @default(cuid())
+  businessId String
+  branchId  String?
+  taxId     String?
+  accountId String?
+
+  sourceType String
+  sourceId   String
+  entryId    String?
+  periodYear Int
+  periodMonth Int
+
+  taxableAmount Int @default(0)
+  taxAmount     Int @default(0)
+  taxRate       Int @default(0)
+
+  createdAt DateTime @default(now())
+
+  business  Business      @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch    Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  tax       Tax?          @relation(fields: [taxId], references: [id], onDelete: SetNull)
+  account   Account?      @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  entry     JournalEntry? @relation(fields: [entryId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, periodYear, periodMonth])
+  @@index([sourceType, sourceId])
+}
+
+/// Locks a month against back-dated postings. Posting into a CLOSED period is
+/// blocked at the service layer, not merely hidden in the UI.
+model FiscalPeriod {
+  id         String @id @default(cuid())
+  businessId String
+  branchId   String?
+  /// `"GLOBAL"` for business-wide period locks, else `"BRANCH:<id>"`.
+  scopeKey   String @default("GLOBAL")
+
+  year  Int
+  month Int
+
+  status   String @default("OPEN") // OPEN | CLOSED
+  openedAt DateTime @default(now())
+  closedAt DateTime?
+  closedById String?
+
+  business  Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch    Branch?  @relation(fields: [branchId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, scopeKey, year, month])
+  @@index([businessId, year, month])
+}
+
+// ============================================================================
+// CASH REGISTER / SHIFTS
+// ============================================================================
+
+model Shift {
+  id         String @id @default(cuid())
+  businessId String
+  branchId   String
+  registerId String
+  userId     String
+
+  openedAt   DateTime @default(now())
+  closedAt   DateTime?
+
+  openingFloat Int @default(0)
+  /// Cash counted at close, per currency denomination totals.
+  closingCount Int?
+  /// What the drawer should hold: opening + cash sales - cash refunds + drops.
+  expectedCash Int @default(0)
+  variance     Int @default(0)
+  status       RegisterStatus @default(OPEN)
+
+  note     String?
+  closeNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch    Branch     @relation(fields: [branchId], references: [id])
+  register  Register   @relation(fields: [registerId], references: [id])
+  user      User       @relation(fields: [userId], references: [id])
+  payments  Payment[]
+  movements CashMovement[]
+  sales     Sale[]
+
+  @@index([businessId, status])
+  @@index([registerId, openedAt])
+}
+
+model CashMovement {
+  id       String @id @default(cuid())
+  shiftId  String
+  type     String // DROP | PAYOUT | COUNT_IN | COUNT_OUT | FLOAT
+  amount   Int
+  reason   String?
+  note     String?
+  clientTxnId String?
+
+  createdById String?
+  createdAt DateTime @default(now())
+
+  shift Shift @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  createdBy User? @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([shiftId])
+  @@index([clientTxnId])
+}
+
+// ============================================================================
+// NUMBERING
+// ============================================================================
+
+/// Document numbering. The counter is incremented inside the same transaction
+/// that writes the document, under a row lock, so two concurrent cashiers can
+/// never be issued the same invoice number.
+model DocumentSequence {
+  id          String @id @default(cuid())
+  businessId  String
+  branchId    String?
+  registerId  String?
+
+  /**
+   * Which numbering stream this row owns, collapsed into one non-null string:
+   * `"GLOBAL"`, `"BRANCH:<id>"` or `"REGISTER:<id>"`. Sequences are global,
+   * per-branch or per-till; a single non-null key keeps the uniqueness real
+   * (SQL treats NULLs as distinct) and lets `nextCode` do a one-row upsert.
+   */
+  scopeKey    String @default("GLOBAL")
+
+  /// SALE, INVOICE, PURCHASE, RETURN, EXPENSE, PAYMENT, SHIFT, TRANSFER, COUNT
+  type        String
+  prefix      String @default("")
+  /// Number of digits after the prefix, e.g. 6 -> INV-000123.
+  padding     Int    @default(6)
+  nextValue   Int    @default(1)
+  /// Reset the counter at the start of each fiscal year.
+  resetYearly Boolean @default(false)
+  lastYear    Int?
+
+  updatedAt DateTime @updatedAt
+
+  business  Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  branch    Branch?   @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  register  Register? @relation(fields: [registerId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, type, scopeKey])
+  @@index([businessId, type])
+}
+
+// ============================================================================
+// PLATFORM: SETTINGS, LANGUAGES, AUDIT, SYNC
+// ============================================================================
+
+model Setting {
+  id         String @id @default(cuid())
+  businessId String
+  branchId   String?
+  /// `"GLOBAL"` when the setting applies business-wide, else `"BRANCH:<id>"`.
+  scopeKey   String @default("GLOBAL")
+  key        String
+  /// JSON-encoded value; the union of every known key is documented in
+  /// apps/server/src/modules/settings/schema.ts.
+  value      Json
+  /// Admin-facing description shown in the settings UI.
+  label      String?
+  group      String  @default("GENERAL")
+  type       String  @default("STRING")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, scopeKey, key])
+  @@index([businessId, group])
+}
+
+/// Admin-managed languages. There is no hard-coded language list in the client:
+/// adding a language here and supplying its translations is the whole job.
+model Language {
+  id         String  @id @default(cuid())
+  businessId String
+  /// BCP-47 primary subtag, e.g. `en`, `ar`, `hi`, `zh-Hant`.
+  code       String
+  name       String
+  nativeName String
+  /// LTR or RTL. Drives `dir` on <html> and the logical-property CSS layer.
+  direction  String  @default("ltr")
+  isActive   Boolean @default(true)
+  isDefault  Boolean @default(false)
+  /// Locale used for `Intl.NumberFormat` / `Intl.DateTimeFormat`.
+  locale     String?
+  sortOrder  Int     @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  translations Translation[]
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, code])
+}
+
+/// Per-language string overrides. `key` matches the client's translation keys.
+model Translation {
+  id         String @id @default(cuid())
+  languageId String
+  key        String
+  value      String
+  /// Who last edited it, and whether it differs from the shipped default.
+  updatedById String?
+  isCustom   Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  language Language @relation(fields: [languageId], references: [id], onDelete: Cascade)
+
+  @@unique([languageId, key])
+  @@index([languageId])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  businessId String
+  userId     String?
+
+  action     AuditAction
+  entityType AuditEntityType
+  entityId   String?
+  /// Human-readable document code, e.g. "INV-000123", for readable timelines.
+  entityCode String?
+
+  before Json?
+  after  Json?
+  /// Only the fields that actually changed.
+  changes Json?
+
+  ip        String?
+  userAgent String?
+  /// Set when the change originated from an offline client replay.
+  deviceId  String?
+
+  createdAt DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, createdAt])
+  @@index([businessId, entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([action])
+}
+
+/// Journal of every offline operation the server has ingested.
+///
+/// The `clientTxnId` here is the global idempotency ledger: it covers operation
+/// types (such as HOLD_CREATE) that have no natural place to hang a unique key
+/// of their own, and gives operators an audit trail of what a device did while
+/// disconnected.
+model SyncOperation {
+  id          String   @id @default(cuid())
+  businessId  String
+  deviceId    String
+  clientTxnId String
+  type        String
+
+  status      String   @default("APPLIED") // APPLIED | DUPLICATE | REJECTED | CONFLICT
+  /// The document this produced, for deep-linking from the sync console.
+  resultType  String?
+  resultId    String?
+  resultRef   String?
+
+  message     String?
+  /// The raw payload, retained so a disputed offline sale can be replayed by
+  /// hand and audited for what the device actually sent.
+  payload     Json?
+
+  branchId    String?
+  capturedAt  DateTime
+  processedAt DateTime @default(now())
+  attempts    Int      @default(1)
+
+  createdAt DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, clientTxnId])
+  @@index([businessId, deviceId, processedAt])
+  @@index([status])
+}
+
+// ============================================================================
+// ENUMS
+// ============================================================================
+
+
+enum PartyType {
+  CUSTOMER
+  SUPPLIER
+  BOTH
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
+}
+
+enum ProductType {
+  SIMPLE
+  VARIANT
+  BUNDLE
+  SERVICE
+}
+
+enum ProductStatus {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum CostingMethod {
+  AVERAGE
+  FIFO
+  LIFETIME
+  STANDARD
+}
+
+enum WarehouseType {
+  STORE
+  WAREHOUSE
+  SUPPLY
+  QUARANTINE
+  DAMAGED
+}
+
+enum StockMoveType {
+  PURCHASE
+  SALE
+  RETURN_IN
+  RETURN_OUT
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  TRANSFER_IN
+  TRANSFER_OUT
+  OPENING
+  SHRINKAGE
+}
+
+enum StockReferenceType {
+  SALE
+  PURCHASE
+  RETURN
+  ADJUSTMENT
+  TRANSFER
+  STOCKTAKE
+  OPENING
+}
+
+enum TransferStatus {
+  DRAFT
+  IN_TRANSIT
+  RECEIVED
+  CANCELLED
+}
+
+enum SaleStatus {
+  DRAFT
+  COMPLETED
+  PARTIAL
+  RETURNED
+  REFUNDED
+  VOIDED
+}
+
+enum SaleChannel {
+  POS
+  ONLINE
+  PHONE
+  MANUAL
+  OFFLINE
+  API
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  MOBILE
+  BANK_TRANSFER
+  CHEQUE
+  CREDIT
+  GIFT_CARD
+  COUPON
+  OTHER
+}
+
+enum PaymentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  FAILED
+  REFUNDED
+  VOIDED
+}
+
+enum PaymentType {
+  SALE
+  PURCHASE
+  EXPENSE
+  REFUND
+  CASH_IN
+  CASH_OUT
+  CUSTOMER_ADVANCE
+  SUPPLIER_ADVANCE
+}
+
+enum InvoiceType {
+  SALE
+  PURCHASE
+  RETURN
+  CREDIT_NOTE
+  DEBIT_NOTE
+  PROFORMA
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PART_PAID
+  PAID
+  OVERDUE
+  VOID
+  CANCELLED
+}
+
+enum ReturnType {
+  SALE_RETURN
+  PURCHASE_RETURN
+}
+
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  COMPLETED
+  REJECTED
+  CANCELLED
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+enum AccountSubtype {
+  CASH
+  BANK
+  ACCOUNTS_RECEIVABLE
+  INVENTORY
+  FIXED_ASSET
+  ACCOUNTS_PAYABLE
+  TAX_PAYABLE
+  CREDIT_CARD
+  OWNERS_EQUITY
+  RETAINED_EARNINGS
+  SALES_REVENUE
+  SERVICE_REVENUE
+  OTHER_INCOME
+  SALES_DISCOUNT
+  TAX_COLLECTED
+  COGS
+  EXPENSE
+  RENT
+  UTILITIES
+  SALARIES
+  SUPPLIES
+  TRANSPORT
+  OTHER_EXPENSE
+}
+
+enum JournalStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+enum JournalSource {
+  MANUAL
+  SALE
+  PURCHASE
+  PAYMENT
+  EXPENSE
+  RETURN
+  REFUND
+  OPENING
+  CLOSING
+  STOCKTAKE
+}
+
+enum TaxType {
+  PERCENTAGE
+  FIXED
+  INCLUSIVE
+  EXCLUSIVE
+}
+
+enum TaxScope {
+  SALE
+  PURCHASE
+  BOTH
+}
+
+enum ExpenseStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  PAID
+  REJECTED
+  CANCELLED
+}
+
+enum RegisterStatus {
+  OPEN
+  CLOSED
+  SUSPENDED
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  LOGIN
+  LOGOUT
+  APPROVE
+  VOID
+  SYNC
+  EXPORT
+  STOCKTAKE
+}
+
+enum AuditEntityType {
+  Product
+  Category
+  Brand
+  Customer
+  Supplier
+  Employee
+  Branch
+  Warehouse
+  Register
+  Sale
+  SaleItem
+  Invoice
+  Payment
+  Purchase
+  PurchaseItem
+  Return
+  Expense
+  Account
+  JournalEntry
+  JournalLine
+  Tax
+  User
+  Role
+  Setting
+  Translation
+  StockMove
+  StockLevel
+  Session
+  Shift
+  Transfer
+  Count
+  Language
+  Party
+}

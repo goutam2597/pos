@@ -1,0 +1,38 @@
+{
+  "name": "monopos",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Complete Point of Sale, Inventory, ERP, Online & Offline POS, Invoicing, Accounting and Business Management Platform",
+  "workspaces": [
+    "packages/shared",
+    "apps/server",
+    "apps/web"
+  ],
+  "scripts": {
+    "db:up": "docker compose up -d postgres",
+    "db:down": "docker compose down",
+    "setup": "npm install && npm run db:up && npm run db:push && npm run db:seed",
+    "db:push": "npm run db:push -w @monopos/server",
+    "db:seed": "npm run db:seed -w @monopos/server",
+    "dev": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "npm run dev -w @monopos/server",
+    "dev:web": "npm run dev -w @monopos/web",
+    "build": "npm run build -w @monopos/shared && npm run build -w @monopos/server && npm run build -w @monopos/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test -w @monopos/server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20.11"
+  },
+  "allowScripts": {
+    "esbuild@0.28.2": true,
+    "esbuild@0.21.5": true,
+    "prisma@7.10.0": true,
+    "@prisma/engines@7.10.0": true,
+    "esbuild@0.25.12": true
+  }
+}

@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en" dir="ltr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="description" content="MonoPOS — Point of Sale, Inventory, ERP and Accounting." />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>MonoPOS</title>
+    <script>
+      // Paint the correct theme before React mounts, so a dark-mode user never
+      // sees a white flash on first load.
+      (function () {
+        try {
+          var stored = localStorage.getItem('monopos.theme');
+          var dark =
+            stored === 'dark' ||
+            ((stored === 'system' || stored === null) &&
+              window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.dataset.theme = dark ? 'dark' : 'light';
+          document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
+        } catch (e) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
