@@ -19,6 +19,7 @@ import { DataTable, FilterBar, FilterField, type Column } from '../components/da
 import { DateRangePicker, isoDaysAgo, todayIso } from '../components/ui/SearchInput';
 import { SearchInput } from '../components/ui/SearchInput';
 import { Select } from '../components/ui/Select';
+import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { Badge, StatusBadge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -258,11 +259,12 @@ function StockTab() {
         filters={
           <>
             <FilterField width="w-[12rem]">
-              <Select
+              <SearchableSelect
                 label="Warehouse"
                 placeholder="All warehouses"
+                searchPlaceholder="Search warehouses\u2026"
                 value={query.warehouseId}
-                onChange={(event) => patch({ warehouseId: event.target.value })}
+                onChange={(warehouseId) => patch({ warehouseId })}
                 options={(warehouses.data ?? []).map((warehouse) => ({ value: warehouse.id, label: warehouse.name }))}
               />
             </FilterField>
@@ -323,11 +325,12 @@ function StockTab() {
         <div className="space-y-4">
           <FormField label="Warehouse" required>
             {(id) => (
-              <Select
+              <SearchableSelect
                 id={id}
                 placeholder="Select a warehouse"
+                searchPlaceholder="Search warehouses\u2026"
                 value={warehouseId}
-                onChange={(event) => setWarehouseId(event.target.value)}
+                onChange={setWarehouseId}
                 options={(warehouses.data ?? []).map((warehouse) => ({ value: warehouse.id, label: warehouse.name }))}
               />
             )}
@@ -664,11 +667,12 @@ function ValuationTab() {
         exportName="inventory-valuation"
         toolbar={
           <div className="w-[14rem]">
-            <Select
+            <SearchableSelect
               label="Warehouse"
               placeholder="All warehouses"
+              searchPlaceholder="Search warehouses\u2026"
               value={warehouseId}
-              onChange={(event) => setWarehouseId(event.target.value)}
+              onChange={setWarehouseId}
               options={(warehouses.data ?? []).map((warehouse) => ({ value: warehouse.id, label: warehouse.name }))}
             />
           </div>

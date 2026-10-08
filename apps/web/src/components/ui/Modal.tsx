@@ -91,9 +91,9 @@ export function Modal({
             className,
           )}
         >
-          <div className="flex items-start justify-between gap-4 border-b border-[var(--border-subtle)] px-5 py-3.5">
+          <div className="flex items-start justify-between gap-4 border-b border-[var(--border-subtle)] px-6 py-5">
             <div className="min-w-0">
-              <h2 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h2>
+              <h2 className="text-[15px] font-semibold tracking-tight text-[var(--text-primary)]">{title}</h2>
               {description && (
                 <p className="mt-0.5 text-[13px] text-[var(--text-tertiary)]">{description}</p>
               )}
@@ -105,19 +105,19 @@ export function Modal({
                 iconOnly
                 onClick={onClose}
                 aria-label="Close dialog"
-                className="-me-1.5 -mt-0.5"
+                className="-me-2 -mt-1"
               >
                 <X size={16} strokeWidth={1.75} />
               </Button>
             )}
           </div>
 
-          <div className={cn('min-h-0 flex-1 overflow-y-auto scrollbar-thin', !bare && 'px-5 py-4')}>
+          <div className={cn('min-h-0 flex-1 overflow-y-auto scrollbar-thin', !bare && 'p-6')}>
             {children}
           </div>
 
           {footer && (
-            <div className="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] px-5 py-3">
+            <div className="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] px-6 py-4">
               {footer}
             </div>
           )}

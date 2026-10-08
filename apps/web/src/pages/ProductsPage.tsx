@@ -277,11 +277,12 @@ export function ProductsPage() {
         filters={
           <>
             <FilterField>
-              <Select
+              <SearchableSelect
                 label="Category"
                 placeholder="All categories"
+                searchPlaceholder="Search categories\u2026"
                 value={query.categoryId}
-                onChange={(event) => patch({ categoryId: event.target.value })}
+                onChange={(categoryId) => patch({ categoryId })}
                 options={(categories.data ?? []).map((category) => ({ value: category.id, label: category.name }))}
               />
             </FilterField>

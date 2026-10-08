@@ -17,6 +17,7 @@ import { DataTable, FilterBar, FilterField, type Column } from '../components/da
 import { DateRangePicker, isoDaysAgo, todayIso } from '../components/ui/SearchInput';
 import { SearchInput } from '../components/ui/SearchInput';
 import { Select } from '../components/ui/Select';
+import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { StatusBadge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { MoneyInput } from '../components/ui/NumberInput';
@@ -186,11 +187,12 @@ export function PurchasesPage() {
               />
             </FilterField>
             <FilterField width="w-[12rem]">
-              <Select
+              <SearchableSelect
                 label="Supplier"
                 placeholder="All suppliers"
+                searchPlaceholder="Search suppliers\u2026"
                 value={query.supplierId}
-                onChange={(event) => patch({ supplierId: event.target.value })}
+                onChange={(supplierId) => patch({ supplierId })}
                 options={(suppliers.data ?? []).map((supplier) => ({ value: supplier.id, label: supplier.name }))}
               />
             </FilterField>

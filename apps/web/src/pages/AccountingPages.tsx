@@ -17,6 +17,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { DateRangePicker, isoDaysAgo, todayIso } from '../components/ui/SearchInput';
 import { SearchInput } from '../components/ui/SearchInput';
 import { Select } from '../components/ui/Select';
+import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { StatusBadge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -489,13 +490,14 @@ export function JournalPage() {
             <div className="space-y-2">
               {draftLines.map((line, index) => (
                 <div key={index} className="grid grid-cols-[1fr_9rem_9rem] items-end gap-2">
-                  <Select
+                  <SearchableSelect
                     label={index === 0 ? 'Account' : undefined}
                     placeholder="Choose an account"
+                    searchPlaceholder="Search code or name\u2026"
                     value={line.accountId}
-                    onChange={(event) =>
+                    onChange={(accountId) =>
                       setDraftLines((current) =>
-                        current.map((entry, i) => (i === index ? { ...entry, accountId: event.target.value } : entry)),
+                        current.map((entry, i) => (i === index ? { ...entry, accountId } : entry)),
                       )
                     }
                     options={(accounts.data ?? []).map((account) => ({
@@ -779,11 +781,12 @@ export function LedgerPage() {
 
       <Card className="mb-4">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Select
+          <SearchableSelect
             label="Account"
             placeholder="Choose an account"
+            searchPlaceholder="Search code or name\u2026"
             value={accountId}
-            onChange={(event) => setAccountId(event.target.value)}
+            onChange={setAccountId}
             options={(accounts.data ?? []).map((account) => ({
               value: account.id,
               label: `${account.code} — ${account.name}`,
