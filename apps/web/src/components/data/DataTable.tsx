@@ -287,45 +287,41 @@ export function DataTable<T>({
 
   const activeBulkActions = bulkActions.filter((action) => !action.enabled || action.enabled([...selected]));
 
+  /**
+   * Row-level actions: column chooser and CSV export. Rendered on the trailing
+   * edge of the single control row rather than in a band of their own.
+   */
+  const renderRowActions = () => (
+    <>
+      {columnItems.length > 0 && (
+        <DropdownMenu
+          label="Columns"
+          align="end"
+          items={columnItems}
+          trigger={({ open, ref }) => (
+            <Button
+              ref={ref as React.Ref<HTMLButtonElement>}
+              variant="ghost"
+              size="sm"
+              iconOnly
+              aria-label="Choose columns"
+              aria-expanded={open}
+            >
+              <Columns3 size={16} strokeWidth={1.75} />
+            </Button>
+          )}
+        />
+      )}
+      {exportable && (
+        <Button variant="ghost" size="sm" onClick={exportCsv} icon={<Download size={15} strokeWidth={1.75} />}>
+          <span className="hidden sm:inline">Export</span>
+        </Button>
+      )}
+    </>
+  );
+
   return (
     <div className={cn('flex min-w-0 flex-col rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-surface)]', className)}>
-      {(toolbar || exportable || columnItems.length > 0) && (
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-subtle)] px-3 py-2.5">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">{toolbar}</div>
-          <div className="flex items-center gap-1.5">
-            {isRefetching && (
-              <span className="me-1 text-[12px] text-[var(--text-tertiary)]" aria-live="polite">
-                Refreshing…
-              </span>
-            )}
-            {columnItems.length > 0 && (
-              <DropdownMenu
-                label="Columns"
-                align="end"
-                items={columnItems}
-                trigger={({ open, ref }) => (
-                  <Button
-                    ref={ref as React.Ref<HTMLButtonElement>}
-                    variant="ghost"
-                    size="sm"
-                    iconOnly
-                    aria-label="Choose columns"
-                    aria-expanded={open}
-                  >
-                    <Columns3 size={16} strokeWidth={1.75} />
-                  </Button>
-                )}
-              />
-            )}
-            {exportable && (
-              <Button variant="ghost" size="sm" onClick={exportCsv} icon={<Download size={15} strokeWidth={1.75} />}>
-                <span className="hidden sm:inline">Export</span>
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
-
       {activeBulkActions.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--accent-subtle)] px-3 py-2">
           <span className="text-[13px] font-medium text-[var(--accent-text)]">{selected.size} selected</span>
@@ -348,7 +344,36 @@ export function DataTable<T>({
         </div>
       )}
 
-      {filters && <div className="border-b border-[var(--border-subtle)] px-3 py-2.5">{filters}</div>}
+      {/*
+        ONE control row for every list screen: the toolbar (search, date range)
+        and the filter selects share a single wrapping row, with the row-level
+        actions — refresh, column chooser, export — pushed to the trailing edge.
+
+        Previously these were three stacked bands, which pushed the actual table
+        below the fold on any screen with a date range and two filters.
+        `display: contents` dissolves each page's own toolbar wrapper so its
+        children join this row, and the width override stops their `w-full`
+        from forcing a wrap.
+      */}
+      {(toolbar || filters || exportable || columnItems.length > 0) && (
+        <div className="flex flex-wrap items-end gap-x-2.5 gap-y-3 border-b border-[var(--border-subtle)] px-3 py-2.5">
+          {/* `items-end` aligns label-less controls (search) with the baseline
+              of the labelled ones, so the row reads as a single strip rather
+              than a search box hanging below three captions. */}
+          {toolbar && <div className="contents [&>*]:!w-auto [&_div]:!w-auto [&_div]:flex-none">{toolbar}</div>}
+          {filters}
+          {(exportable || columnItems.length > 0 || isRefetching) && (
+            <div className="ms-auto flex items-center gap-1.5">
+              {isRefetching && (
+                <span className="me-1 text-[12px] text-[var(--text-tertiary)]" aria-live="polite">
+                  Refreshing…
+                </span>
+              )}
+              {renderRowActions()}
+            </div>
+          )}
+        </div>
+      )}
 
       <div ref={bodyRef} className="min-w-0 flex-1 overflow-x-auto scrollbar-thin">
         {error ? (
