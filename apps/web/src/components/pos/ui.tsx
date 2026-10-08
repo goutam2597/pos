@@ -27,6 +27,7 @@ import {
   type SelectHTMLAttributes,
 } from 'react';
 import clsx from 'clsx';
+import { Select as SharedSelect } from '../ui/Select';
 import { X } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -181,33 +182,56 @@ export function Field({ label, hint, error, children }: FieldProps) {
   );
 }
 
-export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
-  options: Array<{ value: string; label: string; disabled?: boolean }>;
+export interface SelectOption {
+  value: string;
+  label: string;
+  disabled?: boolean;
 }
 
-export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
-  { options, className, ...rest },
-  ref,
-) {
+/**
+ * The till's dropdown re-exports the shared custom control rather than a native
+ * `<select>`.
+ *
+ * A native select inside the POS looks nothing like the rest of the terminal —
+ * OS-styled, unsearchable, and unpaintable. It also breaks the design guarantee
+ * that every control in the product is one component. Keeping the local name and
+ * the `onChange(event)` signature means the till screens are untouched.
+ */
+export function Select({
+  options,
+  id,
+  value,
+  onChange,
+  disabled,
+  className,
+  placeholder,
+  size,
+}: {
+  options: SelectOption[];
+  id?: string;
+  value?: string;
+  onChange?: (event: { target: { value: string } }) => void;
+  disabled?: boolean;
+  className?: string;
+  placeholder?: string;
+  size?: 'sm' | 'md' | 'lg';
+}) {
   return (
-    <select
-      ref={ref}
-      className={cx(
-        `${CONTROL_H} w-full rounded-[var(--radius-md)] border border-[var(--border-default)]`,
-        'bg-[var(--bg-surface)] px-2 text-[13px] text-[var(--text-primary)]',
-        'focus-visible:outline-2 focus-visible:outline-[var(--focus-ring)]',
-        className,
-      )}
-      {...rest}
-    >
-      {options.map((option) => (
-        <option key={option.value} value={option.value} disabled={option.disabled}>
-          {option.label}
-        </option>
-      ))}
-    </select>
+    <SharedSelect
+      id={id}
+      value={value ?? null}
+      options={options}
+      disabled={disabled}
+      className={className}
+      placeholder={placeholder}
+      size={size}
+      // Every till list is short and fixed (payment methods, discount types);
+      // a search box there would be pure friction.
+      searchable={false}
+      onChange={onChange}
+    />
   );
-});
+}
 
 // ---------------------------------------------------------------------------
 // Feedback

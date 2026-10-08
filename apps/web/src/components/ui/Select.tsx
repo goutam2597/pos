@@ -1,115 +1,102 @@
-import { forwardRef, useId, type ReactNode, type SelectHTMLAttributes } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { forwardRef, type ReactNode, type SelectHTMLAttributes } from 'react';
 
-import { cn } from '../../lib/cn';
-import { controlBase } from './tokens';
-import { FieldFoot, FieldLabel, type InputSize } from './Input';
+import { SearchableSelect } from './SearchableSelect';
 
 /**
- * Select.
+ * Select — the standard dropdown control.
  *
- * A native `<select>` on purpose: it inherits the OS picker, is keyboard and
- * screen-reader correct for free, and on a phone gives the platform control
- * that no custom listbox can match. Only the chrome is ours.
+ * This renders the CUSTOM searchable dropdown, not a native `<select>`. An
+ * earlier version used the native element "because it inherits the OS picker",
+ * which is defensible in isolation but wrong for this product: the rendered
+ * control then looks different on every machine, cannot be styled to match the
+ * rest of the design system, and cannot search a long option list. Every dropdown
+ * in MonoPOS now goes through one implementation.
+ *
+ * The component keeps the native `<select>` API — notably `onChange` receiving
+ * a DOM-ish event with `target.value` — so all thirty-odd call sites across the
+ * admin pages keep working unchanged. That compatibility shim is deliberate:
+ * swapping the control should never require touching twenty files.
  */
 
 export interface SelectOption {
   value: string;
   label: string;
   disabled?: boolean;
-  /** Rendered in a separate group with its own `<optgroup>` label. */
+  /** Rendered in a separate group with its own heading. */
   group?: string;
+  /** Extra text shown right-aligned; used for rates and units. */
+  description?: string;
 }
 
 export interface SelectProps
-  extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children' | 'size'> {
+  extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'children' | 'size' | 'value' | 'defaultValue' | 'onChange'> {
   options?: SelectOption[];
   placeholder?: string;
-  size?: InputSize;
+  searchPlaceholder?: string;
+  size?: 'sm' | 'md' | 'lg';
   label?: ReactNode;
   hint?: ReactNode;
   error?: ReactNode;
   required?: boolean;
+  value?: string | null;
+  defaultValue?: string | null;
+  onChange?: (event: { target: { value: string } }) => void;
+  /** Hide the search box for very short lists where it is only noise. */
+  searchable?: boolean;
 }
 
-const SIZES: Record<InputSize, string> = {
-  sm: 'h-[var(--height-control-sm)]',
-  md: 'h-[var(--height-control)]',
-  lg: 'h-[var(--height-control-lg)]',
-};
+/**
+ * Shape a plain-string value the way callers historically passed it.
+ * Accepts `''` and `null` as "nothing selected".
+ */
+function coerce(value: unknown): string | null {
+  if (value === undefined || value === null || value === '') return null;
+  return String(value);
+}
 
-export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
-  { className, options, placeholder, size = 'md', label, hint, error, required, id, ...props },
+export const Select = forwardRef<HTMLButtonElement, SelectProps>(function Select(
+  {
+    className,
+    options = [],
+    placeholder = 'Select…',
+    searchPlaceholder,
+    size = 'md',
+    label,
+    hint,
+    error,
+    required,
+    disabled,
+    value,
+    defaultValue,
+    onChange,
+    id,
+    searchable,
+    ...rest
+  },
   ref,
 ) {
-  const generatedId = useId();
-  const fieldId = id ?? generatedId;
-
-  const grouped = groupOptions(options ?? []);
-
   return (
-    <div className="w-full">
-      {label !== undefined && (
-        <FieldLabel htmlFor={fieldId} required={required}>
-          {label}
-        </FieldLabel>
-      )}
-      <div className="relative">
-        <select
-          ref={ref}
-          id={fieldId}
-          required={required}
-          aria-invalid={error ? true : undefined}
-          className={cn(
-            controlBase,
-            SIZES[size],
-            'appearance-none pe-8',
-            error && 'border-[var(--danger)]',
-            className,
-          )}
-          {...props}
-        >
-          {placeholder !== undefined && (
-            <option value="">{placeholder}</option>
-          )}
-          {grouped.map((entry) =>
-            entry.group ? (
-              <optgroup key={entry.group} label={entry.group}>
-                {entry.options.map((option) => (
-                  <option key={option.value} value={option.value} disabled={option.disabled}>
-                    {option.label}
-                  </option>
-                ))}
-              </optgroup>
-            ) : (
-              entry.options.map((option) => (
-                <option key={option.value} value={option.value} disabled={option.disabled}>
-                  {option.label}
-                </option>
-              ))
-            ),
-          )}
-        </select>
-        <ChevronDown
-          size={16}
-          strokeWidth={1.75}
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-y-0 end-2.5 my-auto text-[var(--text-tertiary)]"
-        />
-      </div>
-      <FieldFoot hint={hint} error={error} id={fieldId} />
-    </div>
+    <SearchableSelect
+      ref={ref}
+      id={id}
+      className={className}
+      size={size}
+      label={label}
+      hint={hint}
+      error={error}
+      required={required}
+      disabled={disabled}
+      placeholder={placeholder}
+      searchPlaceholder={searchPlaceholder ?? 'Search…'}
+      value={coerce(value)}
+      defaultValue={coerce(defaultValue)}
+      // Short fixed lists (a status filter, a page size) do not benefit from a
+      // search box; long entity lists do. This is decided by the list, not by
+      // the caller, so every dropdown behaves the same way.
+      searchable={searchable ?? options.length > 8}
+      options={options}
+      onChange={(next) => onChange?.({ target: { value: next } })}
+      {...rest}
+    />
   );
 });
-
-/** Stable optgroup boundaries so React does not remount options on every render. */
-function groupOptions(options: SelectOption[]): Array<{ group?: string; options: SelectOption[] }> {
-  const out: Array<{ group?: string; options: SelectOption[] }> = [];
-  for (const option of options) {
-    const last = out[out.length - 1];
-    const key = option.group ?? '';
-    if (!last || (last.group ?? '') !== key) out.push({ group: option.group, options: [option] });
-    else last.options.push(option);
-  }
-  return out;
-}

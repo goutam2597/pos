@@ -1,4 +1,5 @@
 import {
+  forwardRef,
   useCallback,
   useEffect,
   useId,
@@ -6,6 +7,7 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type Ref,
 } from 'react';
 import { Check, ChevronDown, Search, X } from 'lucide-react';
 
@@ -59,11 +61,16 @@ export interface SearchableSelectProps {
   /** Called with the raw query for server-side filtering; skips local filtering. */
   onSearch?: (query: string) => void;
   loading?: boolean;
+  /** Hide the search box for short fixed lists where it is only noise. */
+  searchable?: boolean;
+  /** The trigger button, forwarded from the parent. */
+  ref?: Ref<HTMLButtonElement>;
 }
 
 const OPTION_HEIGHT = 34;
 
-export function SearchableSelect({
+export const SearchableSelect = forwardRef<HTMLButtonElement, SearchableSelectProps>(
+function SearchableSelect({
   value,
   defaultValue = null,
   onChange,
@@ -83,6 +90,8 @@ export function SearchableSelect({
   className,
   onSearch,
   loading,
+  searchable = true,
+  ref,
 }: SearchableSelectProps) {
   const generatedId = useId();
   const fieldId = id ?? generatedId;
@@ -105,6 +114,7 @@ export function SearchableSelect({
   // Server-side filtering bypasses the local match; the parent owns the list.
   const filtered = useMemo(() => {
     if (onSearch) return options;
+    if (!searchable && !query.trim()) return options;
     const needle = query.trim().toLowerCase();
     if (!needle) return options;
     return options.filter(
@@ -245,7 +255,7 @@ export function SearchableSelect({
       )}
       <div className="relative">
         <button
-          ref={triggerRef}
+          ref={mergeRefs(triggerRef, ref)}
           type="button"
           id={fieldId}
           disabled={disabled}
@@ -400,4 +410,15 @@ export function SearchableSelect({
       <FieldFoot hint={hint} error={error} id={fieldId} />
     </div>
   );
+});
+
+/** Combine a local ref with one forwarded from the parent. */
+function mergeRefs<T>(...refs: Array<React.Ref<T> | undefined>) {
+  return (node: T | null) => {
+    for (const ref of refs) {
+      if (!ref) continue;
+      if (typeof ref === 'function') ref(node);
+      else (ref as { current: T | null }).current = node;
+    }
+  };
 }
