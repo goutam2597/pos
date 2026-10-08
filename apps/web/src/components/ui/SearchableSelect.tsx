@@ -302,13 +302,12 @@ function SearchableSelect({
         {showClear && (
           <button
             type="button"
-            tabIndex={-1}
             aria-label="Clear selection"
             onClick={() => {
               if (value === undefined) setInternal(null);
               onChange?.('');
             }}
-            className="absolute inset-y-0 end-8 my-auto flex size-6 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-tertiary)] hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)]"
+            className="z-10 absolute inset-y-0 end-8 my-auto flex size-6 items-center justify-center rounded-[var(--radius-xs)] text-[var(--text-tertiary)] hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)]"
           >
             <X size={14} strokeWidth={1.75} />
           </button>

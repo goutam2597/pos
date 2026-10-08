@@ -34,9 +34,22 @@ export function FilterBar({ children, filters, active = [], onClearAll, classNam
   const hasFilters = Boolean(filters);
 
   return (
-    <div className={cn('space-y-2.5', className)}>
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="min-w-[12rem] flex-1 sm:max-w-xs">{children}</div>
+    /*
+     * `contents` dissolves this wrapper so the search field becomes a direct
+     * item of the DataTable's control row. Left as a flex container, the search
+     * always wrapped onto a line of its own, which is what put it above the
+     * filters instead of beside them.
+     */
+    <div className="contents">
+      {/*
+        This row participates in the DataTable's control row via `contents` on
+        the parent, so it must NOT wrap internally: an internal `flex-wrap`
+        would send the search onto a line of its own. The search also has a fixed
+        width rather than `flex-1`, because a growing search consumes exactly the
+        slack the filter selects need to stay on the same line.
+      */}
+      <div className="flex items-center gap-2 empty:hidden">
+        <div className="w-[15rem] shrink-0">{children}</div>
         {hasFilters && (
           <Button
             variant={open ? 'secondary' : 'ghost'}

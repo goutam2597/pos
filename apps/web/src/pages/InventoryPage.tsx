@@ -561,13 +561,12 @@ function MovesTab() {
       onPageSizeChange={(pageSize) => patch({ pageSize })}
       exportName="stock-moves"
       toolbar={
-        <div className="flex w-full flex-wrap items-end gap-2">
+        <div className="flex items-end gap-2.5">
           <FilterBar className="w-full sm:w-auto">
             <SearchInput value={query.search} onValueChange={(search) => patch({ search })} placeholder="Search product" />
           </FilterBar>
           <DateRangePicker
-            className="ms-auto"
-            from={query.from}
+                        from={query.from}
             to={query.to}
             onChange={(range) => patch({ from: range.from, to: range.to })}
           />

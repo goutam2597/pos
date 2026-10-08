@@ -357,10 +357,25 @@ export function DataTable<T>({
       */}
       {(toolbar || filters || exportable || columnItems.length > 0) && (
         <div className="flex flex-wrap items-end gap-x-2.5 gap-y-3 border-b border-[var(--border-subtle)] px-3 py-2.5">
-          {/* `items-end` aligns label-less controls (search) with the baseline
-              of the labelled ones, so the row reads as a single strip rather
-              than a search box hanging below three captions. */}
-          {toolbar && <div className="contents [&>*]:!w-auto [&_div]:!w-auto [&_div]:flex-none">{toolbar}</div>}
+          {/*
+            The toolbar's own wrapper is dissolved with `display: contents` so
+            the search field and any date range join this row directly instead
+            of forming a band of their own.
+
+            The wrapper is NOT `flex-1`: that would claim the leftover width and
+            shove the filters to the trailing edge, which is the same gap in a
+            different place. Instead the search itself grows (see `FilterBar`)
+            and the filters follow it at their natural width.
+          */}
+          {/*
+            `contents` dissolves the page's toolbar wrapper so the search field
+            and date range become items of THIS row. The wrapper carries no
+            width of its own — giving it `flex-1` claimed the leftover space
+            and pushed the filters to the far right, which is the same gap in a
+            different place. The search's own `flex-1` (set in `FilterBar`)
+            absorbs the slack instead.
+          */}
+          {toolbar && <div className="contents [&>div]:flex [&>div]:min-w-0 [&>div]:items-end [&>div]:gap-2.5 [&>div]:flex-none">{toolbar}</div>}
           {filters}
           {(exportable || columnItems.length > 0 || isRefetching) && (
             <div className="ms-auto flex items-center gap-1.5">

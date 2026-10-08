@@ -869,9 +869,9 @@ export function AuditPage() {
         onPageSizeChange={(pageSize) => patch({ pageSize })}
         exportName="audit-log"
         toolbar={
-          <div className="flex w-full flex-wrap items-end gap-2">
+          <div className="flex items-end gap-2.5">
             <SearchInput value={query.search} onValueChange={(search) => patch({ search })} placeholder="Search user or record" className="w-full sm:w-64" />
-            <DateRangePicker className="ms-auto" from={query.from} to={query.to} onChange={(range) => patch({ from: range.from, to: range.to })} />
+            <DateRangePicker from={query.from} to={query.to} onChange={(range) => patch({ from: range.from, to: range.to })} />
           </div>
         }
         filters={
