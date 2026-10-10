@@ -63,6 +63,24 @@ export function AppRoutes() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
 
+      {/*
+        The till is its own surface: no shell, no sidebar — a cashier's screen
+        is not an admin page. Mounted outside the AppShell layout so it owns
+        the whole viewport, and opened in its own browser tab from the sidebar.
+      */}
+      <Route
+        path="/pos"
+        element={
+          <RequireAuth>
+            <PageBoundary>
+              <RequirePermission permission="pos:view">
+                <POSPage />
+              </RequirePermission>
+            </PageBoundary>
+          </RequireAuth>
+        }
+      />
+
       <Route
         element={
           <RequireAuth>
@@ -77,16 +95,6 @@ export function AppRoutes() {
             <PageBoundary>
               <RequirePermission permission="dashboard:view">
                 <DashboardPage />
-              </RequirePermission>
-            </PageBoundary>
-          }
-        />
-        <Route
-          path="/pos"
-          element={
-            <PageBoundary>
-              <RequirePermission permission="pos:view">
-                <POSPage />
               </RequirePermission>
             </PageBoundary>
           }
