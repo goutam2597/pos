@@ -51,7 +51,10 @@ export type CrudFieldType =
   | 'select'
   | 'switch'
   | 'date'
-  | 'checkbox';
+  | 'checkbox'
+  /** Non-input explainer panel; renders `hint` as its body. Pairs with a
+   * technical field so the explanation sits beside the control it explains. */
+  | 'note';
 
 export interface CrudFieldOption {
   value: string;
@@ -89,6 +92,8 @@ export interface CrudPageProps<T> {
   tableId: string;
   title: string;
   description?: string;
+  /** One-liner under the create/edit dialog title. */
+  dialogDescription?: string;
   /** Resource path without an id, e.g. `/categories`. */
   path: string;
   columns: Column<T>[];
@@ -127,6 +132,7 @@ export function CrudPage<T>({
   tableId,
   title,
   description,
+  dialogDescription,
   path,
   columns,
   fields,
@@ -170,15 +176,18 @@ export function CrudPage<T>({
   const requestParams = useMemo(
     () => ({
       ...(params ?? {}),
-      page,
-      pageSize,
+      // Non-paginated screens fetch the whole list: no page params, or the
+      // server would silently truncate at the default page size.
+      ...(paginated ? { page, pageSize } : {}),
       ...(search ? { search } : {}),
       ...filters,
     }),
-    [params, page, pageSize, search, filters],
+    [params, page, pageSize, search, filters, paginated],
   );
 
-  const list = useApiList<T>([tableId, requestParams], path, requestParams, { enabled: paginated });
+  // Always enabled: `enabled: paginated` left every paginated={false} screen
+  // (units, categories, brands, taxes) skeleton-locked with no request at all.
+  const list = useApiList<T>([tableId, requestParams], path, requestParams);
 
   const create = useCreate<Record<string, unknown>>(invalidate);
   const update = useUpdate<Record<string, unknown>>(invalidate);
@@ -224,7 +233,14 @@ export function CrudPage<T>({
           mapped[key] = Array.isArray(value) ? (value[0] ?? '') : value;
         }
         setErrors(mapped);
-        setFormError(null);
+        // A rejected field this form does not render would otherwise vanish —
+        // the modal would show nothing at all. Surface it in the banner.
+        const orphaned = Object.entries(mapped).filter(([key]) => !fields.some((field) => field.name === key));
+        setFormError(
+          orphaned.length > 0
+            ? `The server also rejected: ${orphaned.map(([key, message]) => `${key} — ${message}`).join(', ')}`
+            : null,
+        );
       } else if (error instanceof ApiError) {
         setFormError(error.message);
       } else {
@@ -232,15 +248,24 @@ export function CrudPage<T>({
       }
     };
 
+    // Success must close the dialog — the old code only toasted and left the
+    // stale form open, looking like nothing happened.
+    const onSaved = (pastTense: 'created' | 'updated') => {
+      toast.success(`${title.replace(/s$/, '')} ${pastTense}`);
+      setOpen(false);
+      setErrors({});
+      setFormError(null);
+    };
+
     if (editing) {
       update.mutate(
         { path: `${path}/${getRowId(editing)}`, ...body },
-        { onSuccess: () => toast.success(`${title.replace(/s$/, '')} updated`), onError: onSettled },
+        { onSuccess: () => onSaved('updated'), onError: onSettled },
       );
     } else {
       create.mutate(
         { path, ...body },
-        { onSuccess: () => toast.success(`${title.replace(/s$/, '')} created`), onError: onSettled },
+        { onSuccess: () => onSaved('created'), onError: onSettled },
       );
     }
   };
@@ -396,6 +421,7 @@ export function CrudPage<T>({
         open={open}
         onClose={() => setOpen(false)}
         title={editing ? `Edit ${entityName(editing)}` : createLabel}
+        description={dialogDescription}
         onSubmit={submit}
         submitting={create.isPending || update.isPending}
         submitLabel={editing ? 'Save changes' : 'Create'}
@@ -492,6 +518,16 @@ function FieldControl({
   wrapperClassName?: string;
 }) {
   const options = field.optionsFor && editing ? field.optionsFor(editing) : field.options;
+
+  if (field.type === 'note') {
+    return (
+      <div className={`self-end${wrapperClassName ? ` ${wrapperClassName}` : ''}`}>
+        <div className="rounded-[var(--radius-md)] border border-[var(--border-subtle)] bg-[var(--bg-sunken)] px-3 py-2.5">
+          <p className="text-[12px] leading-relaxed text-[var(--text-secondary)]">{field.hint}</p>
+        </div>
+      </div>
+    );
+  }
 
   if (field.type === 'switch' || field.type === 'checkbox') {
     return (

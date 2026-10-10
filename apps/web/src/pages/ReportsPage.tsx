@@ -237,7 +237,23 @@ export function ProfitabilityReport() {
     Array<{ productId: string; productName: string; sku?: string | null; quantity?: number; revenue?: number; cost?: number; profit?: number; margin?: number }>
   >(
     queryKeys.reports('product-profitability', { from, to }),
-    (signal) => api.data('/reports/product-profitability', { signal, query: { from, to } }),
+    // The API returns `{ rows: [...] }` with its own field names; normalise to
+    // the shape this screen renders. The same applies to every report below.
+    async (signal) => {
+      const envelope = await api.data<{
+        rows?: Array<{ productId: string; name: string; sku?: string | null; qtySold?: number; revenue?: number; cost?: number; profit?: number; marginPercent?: number }>;
+      }>('/reports/product-profitability', { signal, query: { from, to } });
+      return (envelope.rows ?? []).map((row) => ({
+        productId: row.productId,
+        productName: row.name,
+        sku: row.sku ?? null,
+        quantity: row.qtySold ?? 0,
+        revenue: row.revenue ?? 0,
+        cost: row.cost ?? 0,
+        profit: row.profit ?? 0,
+        margin: row.marginPercent ?? 0,
+      }));
+    },
     { staleTime: 60_000 },
   );
 
@@ -332,7 +348,21 @@ export function InventoryValuationReport() {
 
   const { data, isPending, error } = useApiQuery<StockValueRow[]>(
     queryKeys.reports('inventory-valuation'),
-    (signal) => api.data<StockValueRow[]>('/reports/inventory-valuation', { signal }),
+    async (signal) => {
+      const envelope = await api.data<{
+        totalValue?: number;
+        itemCount?: number;
+        lines?: Array<{ itemKey: string; qty?: number; value: number; name: string | null; sku: string | null }>;
+      }>('/reports/inventory-valuation', { signal });
+      return (envelope.lines ?? []).map((line) => ({
+        productId: line.itemKey,
+        productName: line.name ?? 'Product',
+        sku: line.sku,
+        warehouseName: null,
+        qtyMilli: line.qty ?? 0,
+        value: line.value,
+      }));
+    },
     { staleTime: 120_000 },
   );
 
@@ -564,7 +594,33 @@ function BalanceReport({
 
   const { data, isPending, error } = useApiQuery<
     Array<{ partyId: string; partyName: string; opening?: number; invoiced?: number; paid?: number; closing?: number }>
-  >(queryKeys.reports(queryKey, { from, to }), (signal) => api.data(endpoint, { signal, query: { from, to } }), { staleTime: 60_000 });
+  >(
+    queryKeys.reports(queryKey, { from, to }),
+    // The API returns open invoices, not per-party balances: aggregate them.
+    async (signal) => {
+      const envelope = await api.data<{
+        invoices?: Array<{
+          total?: number;
+          paidTotal?: number;
+          balanceDue?: number;
+          party?: { id: string; name: string } | null;
+        }>;
+      }>(endpoint, { signal, query: { from, to } });
+      const byParty = new Map<string, { partyId: string; partyName: string; opening: number; invoiced: number; paid: number; closing: number }>();
+      for (const invoice of envelope.invoices ?? []) {
+        const key = invoice.party?.id ?? invoice.party?.name ?? 'unknown';
+        const entry =
+          byParty.get(key) ??
+          { partyId: invoice.party?.id ?? key, partyName: invoice.party?.name ?? 'Unknown', opening: 0, invoiced: 0, paid: 0, closing: 0 };
+        entry.invoiced += invoice.total ?? 0;
+        entry.paid += invoice.paidTotal ?? 0;
+        entry.closing += invoice.balanceDue ?? 0;
+        byParty.set(key, entry);
+      }
+      return [...byParty.values()].sort((a, b) => b.closing - a.closing);
+    },
+    { staleTime: 60_000 },
+  );
 
   const rows = data ?? [];
   const totalClosing = rows.reduce((sum, row) => sum + (row.closing ?? 0), 0);
@@ -653,15 +709,19 @@ export function ExpenseBreakdownReport() {
   const [to, setTo] = useState(todayIso());
   const exportCsv = useCsvExport('expense-breakdown');
 
-  const { data, isPending, error } = useApiQuery<
-    Array<{ category: string; amount: number; share?: number }> & { total?: number } extends infer T ? T : never
-  >(
+  const { data, isPending, error } = useApiQuery<Array<{ category: string; amount: number }>>(
     queryKeys.reports('expense-breakdown', { from, to }),
-    (signal) => api.data('/reports/expense-breakdown', { signal, query: { from, to } }),
+    async (signal) => {
+      const envelope = await api.data<{ rows?: Array<{ category: string; amount: number }> }>(
+        '/reports/expense-breakdown',
+        { signal, query: { from, to } },
+      );
+      return envelope.rows ?? [];
+    },
     { staleTime: 60_000 },
   );
 
-  const rows = (data ?? []) as Array<{ category: string; amount: number }>;
+  const rows = data ?? [];
   const total = rows.reduce((sum, row) => sum + row.amount, 0);
 
   return (
@@ -744,7 +804,24 @@ export function ShiftHistoryReport() {
     }>
   >(
     queryKeys.reports('shift-history', { from, to }),
-    (signal) => api.data('/reports/shift-history', { signal, query: { from, to } }),
+    async (signal) => {
+      const envelope = await api.data<{
+        rows?: Array<{
+          id: string;
+          registerName?: string | null;
+          branchName?: string | null;
+          userName?: string | null;
+          openedAt?: string | null;
+          closedAt?: string | null;
+          openingFloat?: number;
+          cashSales?: number;
+          cashDrops?: number;
+          countedCash?: number;
+          variance?: number;
+        }>;
+      }>('/reports/shift-history', { signal, query: { from, to } });
+      return envelope.rows ?? [];
+    },
     { staleTime: 60_000 },
   );
 

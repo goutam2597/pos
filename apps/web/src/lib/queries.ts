@@ -378,9 +378,13 @@ export interface Brand {
 export interface Unit {
   id: string;
   name: string;
-  shortName?: string | null;
-  precision?: number;
-  isActive?: boolean;
+  /** Short code printed beside quantities (max 20 chars). Required by the API. */
+  code: string;
+  plural?: string | null;
+  /** False = the unit only sells in whole numbers. */
+  allowFraction?: boolean;
+  /** Milli-units of the base unit equal to one of this unit (a box of 12 → 12000). */
+  conversionFactor?: number;
 }
 
 export interface Tax {

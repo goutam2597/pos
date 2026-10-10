@@ -166,9 +166,10 @@ export function UnitsPage() {
       title="Units of measure"
       description="Each, kg, litre, box — the label printed beside a quantity."
       path="/units"
+      dialogDescription="The name and code printed beside quantities on the till, receipts and reports."
       getRowId={(row) => row.id}
       entityName={(row) => row.name}
-      permissions={{ create: 'product:create', update: 'product:update', delete: 'product:delete' }}
+      permissions={{ create: 'product:create', update: 'product:update', delete: 'product:update' }}
       searchPlaceholder="Search units"
       paginated={false}
       invalidate={[queryKeys.units]}
@@ -190,42 +191,110 @@ export function UnitsPage() {
           ),
         },
         {
-          key: 'shortName',
-          header: 'Abbreviation',
-          value: (row) => row.shortName,
-          width: '8rem',
-          cell: (row) => <span className="tabular-nums">{row.shortName ?? '—'}</span>,
+          key: 'code',
+          header: 'Code',
+          value: (row) => row.code,
+          width: '7rem',
+          cell: (row) => <span className="font-mono text-[12px] uppercase tracking-wide">{row.code}</span>,
         },
         {
-          key: 'precision',
-          header: 'Decimals',
-          align: 'end',
-          value: (row) => row.precision ?? 0,
-          width: '6rem',
-          cell: (row) => <span className="tabular-nums">{row.precision ?? 0}</span>,
+          key: 'plural',
+          header: 'Plural',
+          value: (row) => row.plural ?? '—',
+          width: '9rem',
+          cell: (row) => (row.plural ? <span>{row.plural}</span> : <span className="text-[var(--text-tertiary)]">—</span>),
         },
-        activeColumn<Unit>(),
+        {
+          key: 'allowFraction',
+          header: 'Fraction',
+          align: 'center',
+          value: (row) => (row.allowFraction !== false ? 'Yes' : 'No'),
+          width: '6rem',
+          cell: (row) =>
+            row.allowFraction !== false ? (
+              <span>Yes</span>
+            ) : (
+              <span className="text-[var(--text-tertiary)]">Whole only</span>
+            ),
+        },
+        {
+          key: 'conversionFactor',
+          header: 'Conversion factor',
+          align: 'end',
+          value: (row) => row.conversionFactor ?? 1000,
+          width: '10rem',
+          cell: (row) => (
+            <span
+              className="tabular-nums"
+              title="Milli-units of the base unit that equal one of this unit"
+            >
+              {(row.conversionFactor ?? 1000).toLocaleString()}
+            </span>
+          ),
+        },
       ]}
       fields={[
-        { name: 'name', label: 'Name', type: 'text', required: true, section: 'Details', placeholder: 'e.g. Kilogram' },
-        { name: 'shortName', label: 'Abbreviation', type: 'text', section: 'Details', placeholder: 'kg' },
         {
-          name: 'precision',
-          label: 'Decimal places',
-          type: 'number',
-          section: 'Details',
-          defaultValue: 3,
-          hint: 'Quantities are stored in thousandths regardless; this only controls display.',
+          name: 'name',
+          label: 'Name',
+          type: 'text',
+          required: true,
+          section: 'Unit',
+          placeholder: 'e.g. Kilogram',
         },
-        { name: 'isActive', label: 'Active', type: 'switch', full: true, section: 'Availability', defaultValue: true },
+        {
+          name: 'code',
+          label: 'Code',
+          type: 'text',
+          required: true,
+          section: 'Unit',
+          placeholder: 'kg',
+          hint: 'Short code shown beside quantities (max 20 characters).',
+        },
+        {
+          name: 'plural',
+          label: 'Plural',
+          type: 'text',
+          section: 'Unit',
+          placeholder: 'Kilograms',
+        },
+        {
+          name: 'allowFraction',
+          label: 'Allow fractional quantities',
+          type: 'switch',
+          section: 'Unit',
+          defaultValue: true,
+          hint: 'Off for whole-only units (each, box).',
+        },
+        {
+          name: 'conversionFactor',
+          label: 'Conversion factor',
+          type: 'number',
+          section: 'Conversion',
+          defaultValue: 1000,
+        },
+        {
+          name: 'conversionNote',
+          label: '',
+          type: 'note',
+          section: 'Conversion',
+          hint: 'One of this unit equals this many milli-units of the base unit — a box of 12 pieces is 12000.',
+        },
       ]}
       toBody={(form) => ({
         name: String(form.name ?? '').trim(),
-        shortName: String(form.shortName ?? '').trim() || null,
-        precision: Number(form.precision ?? 3),
-        isActive: Boolean(form.isActive),
+        code: String(form.code ?? '').trim(),
+        plural: String(form.plural ?? '').trim() || null,
+        allowFraction: form.allowFraction !== false,
+        conversionFactor: Math.max(1, Math.round(Number(form.conversionFactor) || 1000)),
       })}
-      fromRow={(row) => ({ name: row.name, shortName: row.shortName ?? '', precision: row.precision ?? 3, isActive: row.isActive !== false })}
+      fromRow={(row) => ({
+        name: row.name,
+        code: row.code ?? '',
+        plural: row.plural ?? '',
+        allowFraction: row.allowFraction !== false,
+        conversionFactor: row.conversionFactor ?? 1000,
+      })}
     />
   );
 }

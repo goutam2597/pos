@@ -57,6 +57,12 @@ export interface NavItem {
   children?: NavItem[];
   /** `g x` keyboard chord; `x` is the second key after `g`. */
   shortcut?: string;
+  /**
+   * Opens in its own browser tab instead of navigating the shell — the till is
+   * a separate surface from the admin, and a cashier must not lose their place
+   * in the back office by clicking into it.
+   */
+  newTab?: boolean;
 }
 
 export interface NavGroup {
@@ -71,7 +77,7 @@ export const NAV_GROUPS: NavGroup[] = [
     labelKey: 'nav.group.sell',
     items: [
       { key: 'dashboard', to: '/', labelKey: 'nav.dashboard', icon: LayoutDashboard, permissions: ['dashboard:view'], shortcut: 'd' },
-      { key: 'pos', to: '/pos', labelKey: 'nav.pos', icon: ShoppingCart, permissions: ['pos:view'], shortcut: 'p' },
+      { key: 'pos', to: '/pos', labelKey: 'nav.pos', icon: ShoppingCart, permissions: ['pos:view'], shortcut: 'p', newTab: true },
       { key: 'sales', to: '/sales', labelKey: 'nav.sales', icon: Receipt, permissions: ['sale:view'], shortcut: 's' },
       { key: 'invoices', to: '/invoices', labelKey: 'nav.invoices', icon: ReceiptText, permissions: ['invoice:view'], shortcut: 'i' },
       { key: 'payments', to: '/payments', labelKey: 'nav.payments', icon: CreditCard, permissions: ['payment:view'] },
@@ -132,7 +138,7 @@ export const NAV_GROUPS: NavGroup[] = [
           { key: 'cash-position', to: '/reports/cash-position', labelKey: 'report.cashPosition', icon: Wallet },
           { key: 'customer-balances', to: '/reports/customer-balances', labelKey: 'report.customerBalances', icon: UsersRound },
           { key: 'supplier-balances', to: '/reports/supplier-balances', labelKey: 'report.supplierBalances', icon: Truck },
-          { key: 'expense-breakdown', to: '/reports/expense-breakdown', icon: Wallet },
+          { key: 'expense-breakdown', to: '/reports/expense-breakdown', labelKey: 'report.expenseBreakdown', icon: Wallet },
           { key: 'shift-history', to: '/reports/shift-history', labelKey: 'report.shiftHistory', icon: Store },
         ],
       },
