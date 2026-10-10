@@ -31,6 +31,8 @@ export interface ProductGridProps {
   /** Product to highlight (the one just added), so the eye can find it. */
   flashId: string | null;
   onSyncNow: () => void;
+  /** Opens the camera scanner — for tills whose "scanner" is the device camera. */
+  onOpenScanner: () => void;
 }
 
 export function ProductGrid({
@@ -47,6 +49,7 @@ export function ProductGrid({
   searchRef,
   flashId,
   onSyncNow,
+  onOpenScanner,
 }: ProductGridProps) {
   const t = useT();
 
@@ -72,7 +75,7 @@ export function ProductGrid({
           <Search
             size={15}
             strokeWidth={1.75}
-            className="pointer-events-none absolute inset-inline-start-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]"
+            className="pointer-events-none absolute start-2.5 top-1/2 -translate-y-1/2 text-[var(--text-tertiary)]"
           />
           <Input
             ref={searchRef}
@@ -85,6 +88,12 @@ export function ProductGrid({
             aria-label="Product search"
           />
         </div>
+        {/* Camera scan for tills without a USB scanner; type="button" so it
+            never submits the search form. */}
+        <Button variant="secondary" onClick={onOpenScanner} title="Scan with the device camera">
+          <ScanLine size={15} strokeWidth={1.75} />
+          <span className="hidden lg:inline">Camera</span>
+        </Button>
         <span className="hidden items-center gap-1 text-[11px] text-[var(--text-tertiary)] md:flex">
           <ScanLine size={13} strokeWidth={1.75} />
           F2
@@ -138,7 +147,7 @@ export function ProductGrid({
             description={`No product matches "${query}" in the local catalogue.`}
           />
         ) : (
-          <ul className="grid grid-cols-[repeat(auto-fill,minmax(9.5rem,1fr))] gap-2 p-2">
+          <ul className="grid grid-cols-[repeat(auto-fill,minmax(10.5rem,1fr))] gap-2.5 p-2.5">
             {products.map((product) => {
               const outOfStock = product.trackInventory && product.qtyOnHand <= 0 && !product.allowNegativeStock;
               const flash = product.id === flashId;
@@ -150,29 +159,50 @@ export function ProductGrid({
                     onClick={() => onSelect(product)}
                     title={outOfStock ? `${product.name} — out of stock` : product.name}
                     className={cx(
-                      'flex h-full w-full flex-col items-start gap-1 rounded-[var(--radius-md)] border p-2 text-start transition-colors',
+                      // A product card, not a text row: photo block on top with
+                      // a fixed shape so every card in the grid shares one
+                      // rhythm, content padded below, no mixed layouts.
+                      'flex h-full w-full flex-col overflow-hidden rounded-[var(--radius-md)] border text-start transition-colors',
                       flash
-                        ? 'border-[var(--accent)] bg-[var(--accent-subtle)]'
-                        : 'border-[var(--border-default)] bg-[var(--bg-surface)] hover:border-[var(--accent)] hover:bg-[var(--accent-subtle)]',
+                        ? 'border-[var(--accent)] ring-2 ring-[var(--accent)]'
+                        : 'border-[var(--border-default)] bg-[var(--bg-surface)] hover:border-[var(--accent)]',
                       outOfStock && 'opacity-60',
                     )}
                   >
-                    <span className="flex w-full items-start gap-1.5">
-                      <Package size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-[var(--text-tertiary)]" />
-                      <span className="line-clamp-2 text-[12px] leading-snug font-medium text-[var(--text-primary)]">
-                        {product.name}
-                      </span>
-                    </span>
-
-                    <span className="tabular text-[13px] font-semibold text-[var(--text-primary)]">{money(product.price)}</span>
-
-                    <span className="mt-auto flex w-full items-center gap-1">
-                      {outOfStock ? <Badge tone="danger">Out of stock</Badge> : null}
-                      {product.trackInventory ? (
-                        <span className="tabular ms-auto text-[11px] text-[var(--text-tertiary)]">
-                          {qty(product.qtyOnHand)}
+                    <span className="relative block aspect-[4/3] w-full shrink-0 overflow-hidden bg-[var(--bg-sunken)]">
+                      {product.imageUrl ? (
+                        <img
+                          src={product.imageUrl}
+                          alt=""
+                          loading="lazy"
+                          className="size-full object-cover"
+                        />
+                      ) : (
+                        <span className="absolute inset-0 flex items-center justify-center text-[var(--text-tertiary)]">
+                          <Package size={24} strokeWidth={1.5} aria-hidden="true" />
+                        </span>
+                      )}
+                      {outOfStock ? (
+                        <span className="absolute start-1.5 top-1.5">
+                          <Badge tone="danger">Out of stock</Badge>
                         </span>
                       ) : null}
+                    </span>
+
+                    <span className="flex min-h-0 flex-1 flex-col gap-1 p-2">
+                      <span className="line-clamp-2 min-h-[2.1em] text-[12.5px] leading-[1.05rem] font-medium text-[var(--text-primary)]">
+                        {product.name}
+                      </span>
+                      <span className="mt-auto flex w-full items-center justify-between gap-1.5">
+                        <span className="tabular text-[14px] font-semibold text-[var(--text-primary)]">
+                          {money(product.price)}
+                        </span>
+                        {product.trackInventory ? (
+                          <span className="tabular rounded-full bg-[var(--bg-sunken)] px-2 py-0.5 text-[11px] text-[var(--text-secondary)]">
+                            {qty(product.qtyOnHand)}
+                          </span>
+                        ) : null}
+                      </span>
                     </span>
                   </button>
                 </li>

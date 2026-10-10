@@ -25,6 +25,8 @@ export interface CartLine {
   variantId: string | null;
   sku: string | null;
   name: string;
+  /** Snapshot of the product image at add time, for the cart thumbnail. */
+  imageUrl: string | null;
   unitPrice: number;
   qtyMilli: number;
   discountType: DiscountType;
@@ -67,12 +69,17 @@ export interface ProductView {
   costPrice: number;
   categoryId: string | null;
   categoryName: string | null;
+  /** Server-relative (`/uploads/…`) or absolute; rendered when present. */
+  imageUrl: string | null;
   taxRate: number;
   qtyOnHand: number;
   trackInventory: boolean;
   allowNegativeStock: boolean;
   deleted: boolean;
 }
+
+/** What one scanned code turned out to be — drives beeps, toasts and the camera panel. */
+export type ScanOutcome = { status: 'added'; product: ProductView } | { status: 'unknown'; code: string };
 
 /** Tendered so far in the payment modal. */
 export interface PaymentDraft {

@@ -25,6 +25,7 @@ function toView(product: CachedProduct): ProductView {
     costPrice: product.costPrice,
     categoryId: product.categoryId,
     categoryName: product.categoryName,
+    imageUrl: product.imageUrl ?? null,
     taxRate: product.taxRate,
     qtyOnHand: product.qtyOnHand,
     trackInventory: product.trackInventory,
@@ -65,6 +66,32 @@ export function matchesQuery(product: ProductView, query: string): boolean {
   if (product.sku && product.sku.toLowerCase() === needle) return true;
   if (product.name.toLowerCase().includes(needle)) return true;
   return false;
+}
+
+/**
+ * Exact-match lookup for a scanned or typed code: barcode first, then SKU.
+ *
+ * Scanning must never fall back to a fuzzy match — a till that adds "whatever
+ * looked closest" sells the wrong item silently, and the cashier is looking at
+ * the customer, not the screen. Case-insensitive because Code128 payloads can
+ * carry letters and the till cannot know which case a scanner sent.
+ */
+export async function findProductByCode(code: string): Promise<ProductView | null> {
+  const needle = code.trim();
+  if (needle === '') return null;
+
+  const byBarcode = await db.products.where('barcode').equals(needle).and((p) => p.deleted !== true).first();
+  if (byBarcode) return toView(byBarcode);
+
+  const bySku = await db.products.where('sku').equals(needle).and((p) => p.deleted !== true).first();
+  if (bySku) return toView(bySku);
+
+  const lower = needle.toLowerCase();
+  const rows = await db.products.toArray();
+  const hit = rows.find(
+    (p) => p.deleted !== true && ((p.barcode ?? '').toLowerCase() === lower || (p.sku ?? '').toLowerCase() === lower),
+  );
+  return hit ? toView(hit) : null;
 }
 
 export function usePosCatalog(query: string, categoryId: string | null, refreshToken: number): PosCatalog {

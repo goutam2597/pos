@@ -14,11 +14,14 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Store } from 'lucide-react';
+import { LayoutDashboard, Store } from 'lucide-react';
+import { toast } from 'sonner';
 import { useAuth } from '../lib/auth';
-import { db, getMeta, type LocalHold } from '../lib/db';
+import { db, getMeta, setMeta, type LocalHold } from '../lib/db';
 import { money } from '../lib/format';
 import { useT } from '../lib/i18n';
+import { cn } from '../lib/cn';
+import { scanBeepError, scanBeepOk } from '../lib/posAudio';
 import {
   captureSale,
   closeShift,
@@ -38,6 +41,7 @@ import {
 import { configureSyncEngine, startSyncEngine, stopSyncEngine, triggerSync } from '../lib/offline/syncEngine';
 import { useSyncStatus } from '../lib/offline/useSyncStatus';
 import { CartPanel } from '../components/pos/CartPanel';
+import { CameraScanner } from '../components/pos/CameraScanner';
 import { CustomerPicker, type CustomerOption, type QuickCustomerDraft } from '../components/pos/CustomerPicker';
 import { HoldPanel } from '../components/pos/HoldPanel';
 import { PaymentModal } from '../components/pos/PaymentModal';
@@ -47,15 +51,16 @@ import { ShiftButton, ShiftPanel } from '../components/pos/ShiftPanel';
 import { ShortcutBar } from '../components/pos/ShortcutBar';
 import { SyncIssuesPanel } from '../components/pos/SyncIssuesPanel';
 import { SyncStatusBar } from '../components/pos/SyncStatusBar';
-import { Badge, Button } from '../components/pos/ui';
+import { Badge, Button, CONTROL_H, Select } from '../components/pos/ui';
 import { priceCart } from '../lib/offline/pricing';
-import type { CartLine, PaymentDraft, ProductView, ReceiptView, ShiftSummaryView } from './types';
+import type { CartLine, PaymentDraft, ProductView, ReceiptView, ScanOutcome, ShiftSummaryView } from './types';
 import { useCart } from './useCart';
-import { useCustomers, usePosCatalog } from './usePosCatalog';
+import { findProductByCode, useCustomers, usePosCatalog } from './usePosCatalog';
+import { useScanner } from './useScanner';
 
 export default function POSPage() {
   const t = useT();
-  const { api, branchId, user, business } = useAuth();
+  const { api, branchId, setBranchId, user, business } = useAuth();
   const status = useSyncStatus();
 
   const cart = useCart();
@@ -67,6 +72,7 @@ export default function POSPage() {
 
   const [registerId, setRegisterId] = useState<string | null>(null);
   const [allowCredit, setAllowCredit] = useState(false);
+  const [branches, setBranches] = useState<Array<{ id: string; name: string }>>([]);
 
   const [paymentOpen, setPaymentOpen] = useState(false);
   const [customerOpen, setCustomerOpen] = useState(false);
@@ -74,6 +80,7 @@ export default function POSPage() {
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [shiftOpen, setShiftOpen] = useState(false);
   const [issuesOpen, setIssuesOpen] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   const [holds, setHolds] = useState<LocalHold[]>([]);
   const [holdsLoading, setHoldsLoading] = useState(false);
@@ -88,6 +95,7 @@ export default function POSPage() {
 
   const catalog = usePosCatalog(query, categoryId, catalogToken);
   const customers = useCustomers(catalogToken);
+  const branchName = branches.find((b) => b.id === branchId)?.name ?? null;
 
   // ---------------------------------------------------------------------------
   // Engine wiring. Configure before start so the first drain has credentials.
@@ -96,6 +104,57 @@ export default function POSPage() {
   useEffect(() => {
     void getMeta<string | null>('pos.registerId', null).then(setRegisterId);
   }, []);
+
+  // The till cannot take a sale without a branch, so the picker must always
+  // have options — and a stale stored branch (a branch since deleted) must
+  // heal to a real one rather than leaving the till permanently unable to
+  // charge. Auto-selects the main branch when none is chosen.
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .get<Array<{ id: string; name: string; isMain: boolean; isActive: boolean }>>('/branches', { pageSize: 100 })
+      .then((rows) => {
+        if (cancelled) return;
+        setBranches(rows.filter((b) => b.isActive !== false).map((b) => ({ id: b.id, name: b.name })));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  useEffect(() => {
+    if (branches.length === 0) return;
+    if (!branchId || !branches.some((b) => b.id === branchId)) {
+      setBranchId(branches[0]!.id);
+    }
+  }, [branches, branchId, setBranchId]);
+
+  // Shifts and cash events are keyed to a register server-side, and nothing
+  // else ever chooses one for this terminal — so pick the branch's first
+  // register automatically and remember it. A stored register that no longer
+  // exists heals to a live one the same way the branch does.
+  useEffect(() => {
+    if (!branchId) return;
+    let cancelled = false;
+    void api
+      .get<Array<{ id: string; isActive: boolean }>>('/registers', { branchId })
+      .then((rows) => {
+        if (cancelled) return;
+        const live = rows.filter((r) => r.isActive !== false);
+        if (live.length === 0) return;
+        void getMeta<string | null>('pos.registerId', null).then((stored) => {
+          if (cancelled) return;
+          if (stored && live.some((r) => r.id === stored)) return;
+          void setMeta('pos.registerId', live[0]!.id);
+          setRegisterId(live[0]!.id);
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [api, branchId]);
 
   useEffect(() => {
     configureSyncEngine({
@@ -178,6 +237,49 @@ export default function POSPage() {
     setQuery('');
     searchRef.current?.focus();
   }, [catalog.products, addProduct]);
+
+  // ---------------------------------------------------------------------------
+  // Scanning. One lookup serves both the keyboard wedge (a USB scanner "types"
+  // into whatever has focus — useScanner recognises it by timing) and the
+  // camera scanner, so a code means the same product and the same beep either
+  // way. Exact match only: a till that guesses sells the wrong item silently.
+  // ---------------------------------------------------------------------------
+
+  const handleScan = useCallback(
+    async (code: string): Promise<ScanOutcome> => {
+      let product: ProductView | null = null;
+      try {
+        product = await findProductByCode(code);
+      } catch {
+        product = null;
+      }
+      if (!product) {
+        scanBeepError();
+        toast.error(`No product for code ${code}`, {
+          description: 'The barcode is not in the catalogue. Set it in Products, or add the item by hand.',
+        });
+        return { status: 'unknown', code };
+      }
+      // A scan on the receipt means the cashier has already started the next
+      // basket — clear the old one out of the way first.
+      if (receiptOpen) {
+        setReceiptOpen(false);
+        setReceipt(null);
+      }
+      addProduct(product);
+      setQuery('');
+      if (!scannerOpen) searchRef.current?.focus();
+      scanBeepOk();
+      return { status: 'added', product };
+    },
+    [addProduct, receiptOpen, scannerOpen],
+  );
+
+  // Scanning is a floor activity: off whenever a modal owns the flow (a scan
+  // must never change the total under an open tender). The receipt is not a
+  // gate — scanning past it is the normal next-customer motion.
+  const scanEnabled = !paymentOpen && !customerOpen && !holdOpen && !shiftOpen && !issuesOpen;
+  useScanner({ enabled: scanEnabled, onScan: handleScan });
 
   const openPayment = useCallback(() => {
     if (cart.lines.length === 0) return;
@@ -413,10 +515,10 @@ export default function POSPage() {
           event.preventDefault();
           focusTotal();
           return;
-        case 'F11':
-          event.preventDefault();
-          triggerSync();
-          return;
+      // F11 is deliberately NOT handled here: the browser's native fullscreen
+      // is exactly what a till wants, and it only works if the page does not
+      // intercept the key. (The old binding used F11 for "sync now" — sync has
+      // its own button and F12-adjacent shortcut instead.)
         case 'F12':
           event.preventDefault();
           setShiftOpen(true);
@@ -512,20 +614,47 @@ export default function POSPage() {
   }));
 
   return (
-    <div className="no-print flex h-full min-h-0 flex-col bg-[var(--bg-canvas)]">
+    <div className="no-print flex h-dvh min-h-0 flex-col bg-[var(--bg-canvas)]">
       <header className="no-print flex items-center gap-3 border-b border-[var(--border-default)] bg-[var(--bg-surface)] px-4 py-2">
         <Store size={18} strokeWidth={1.75} className="text-[var(--accent-text)]" />
         <div className="flex min-w-0 flex-col">
           <h1 className="truncate text-[14px] font-semibold text-[var(--text-primary)]">{business?.name ?? t('app.name')}</h1>
           <p className="truncate text-[11px] text-[var(--text-tertiary)]">
-            {branchId ? 'Branch selected' : 'No branch selected'} · {user?.email ?? ''}
+            {branchName ? `${branchName} · ` : 'No branch selected · '}
+            {user?.email ?? ''}
           </p>
         </div>
 
         <div className="ms-auto flex items-center gap-2">
           {status.backlogged ? <Badge tone="warning">Queue is backing up</Badge> : null}
 
-          <label className="flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-default)] px-2 py-1 text-[12px] text-[var(--text-secondary)]">
+          {/* The till runs in its own tab; the admin lives in another one. */}
+          <a
+            href="/"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Open the admin dashboard in a new tab"
+            className="flex size-[var(--height-control)] items-center justify-center rounded-[var(--radius-md)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)]"
+          >
+            <LayoutDashboard size={16} strokeWidth={1.75} aria-hidden="true" />
+          </a>
+
+          {branches.length > 0 ? (
+            <Select
+              value={branchId ?? ''}
+              onChange={(event) => setBranchId(event.target.value || null)}
+              options={branches.map((b) => ({ value: b.id, label: b.name }))}
+              placeholder="Select branch"
+              className="w-44"
+            />
+          ) : null}
+
+          <label
+            className={cn(
+              'flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-default)] px-2 text-[12px] text-[var(--text-secondary)]',
+              CONTROL_H,
+            )}
+          >
             <input
               type="checkbox"
               checked={allowCredit}
@@ -561,6 +690,7 @@ export default function POSPage() {
             searchRef={searchRef}
             flashId={flashId}
             onSyncNow={triggerSync}
+            onOpenScanner={() => setScannerOpen(true)}
           />
         </div>
 
@@ -638,7 +768,6 @@ export default function POSPage() {
         open={receiptOpen}
         receipt={receipt}
         businessName={business?.name ?? null}
-        onPrint={() => window.print()}
         onNewSale={() => {
           setReceiptOpen(false);
           setReceipt(null);
@@ -647,6 +776,8 @@ export default function POSPage() {
         }}
         onClose={() => setReceiptOpen(false)}
       />
+
+      <CameraScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleScan} />
 
       <SyncIssuesPanel open={issuesOpen} onClose={() => setIssuesOpen(false)} refreshToken={catalogToken} />
     </div>
