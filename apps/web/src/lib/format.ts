@@ -20,23 +20,39 @@ export function configureFormatting(currency: string, locale?: string): void {
 /**
  * Money for display. `showCents` is false on dense tables where the decimal is
  * noise, but the amount is never rounded — only the display omits it.
+ *
+ * The symbol comes from the currency table, not `Intl`: the English locale
+ * renders BDT as "BDT 0.65" instead of "৳0.65", and a cashier reads SYMBOLS.
+ * The number part still goes through `Intl` so grouping and digits follow the
+ * locale.
  */
 export function money(minor: number, options?: { showCents?: boolean; currency?: string }): string {
   const currency = options?.currency ?? activeCurrency;
   const meta = currencyMeta(currency);
   const showCents = options?.showCents ?? true;
 
+  const digits = showCents ? meta.exponent : 0;
   try {
-    return new Intl.NumberFormat(activeLocale, {
-      style: 'currency',
-      currency: meta.code,
-      minimumFractionDigits: showCents ? meta.exponent : 0,
-      maximumFractionDigits: showCents ? meta.exponent : 0,
+    const number = new Intl.NumberFormat(activeLocale, {
+      style: 'decimal',
+      minimumFractionDigits: digits,
+      maximumFractionDigits: digits,
     }).format(minor / 10 ** meta.exponent);
+    return symbolWith(meta.symbol, number);
   } catch {
     // An unknown currency code should degrade, not crash a till.
     return `${meta.symbol}${formatMoney(minor, meta.exponent)}`;
   }
+}
+
+/**
+ * Attach a currency symbol to a formatted number. Short alphanumeric symbols
+ * ("KSh", "CHF") read better with a space; glyph symbols ("৳", "$", "€") sit
+ * flush against the digits the way receipts print them.
+ */
+function symbolWith(symbol: string, number: string): string {
+  const needsSpace = symbol.length > 1 && /^[A-Za-z]/.test(symbol);
+  return needsSpace ? `${symbol} ${number}` : `${symbol}${number}`;
 }
 
 /** Quantity in milli-units to a human string. */

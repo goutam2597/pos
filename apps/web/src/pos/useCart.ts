@@ -38,6 +38,7 @@ function toLine(product: ProductView): CartLine {
     variantId: null,
     sku: product.sku,
     name: product.name,
+    imageUrl: product.imageUrl,
     unitPrice: product.price,
     qtyMilli: 0,
     discountType: 'NONE',

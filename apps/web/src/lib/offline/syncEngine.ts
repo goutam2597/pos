@@ -56,7 +56,7 @@ import {
 } from '@monopos/shared';
 import type { UpdateSpec } from 'dexie';
 import { ApiError, type ApiClient } from '../api';
-import { db, getDeviceId, getMeta, outboxCounts, setMeta, type LocalSale, type OutboxEntry } from '../db';
+import { db, getDeviceId, getMeta, getPullCursor, outboxCounts, setMeta, setPullCursor, type LocalSale, type OutboxEntry } from '../db';
 import { describeResult, outboxStateForResult, saleStateForResult } from './conflicts';
 import { applyLocalIdMigration } from './migrations';
 import { toPushItem } from './outbox';
@@ -135,6 +135,32 @@ class SyncEngine {
     // flight. Since this process owns the loop and there is no in-flight
     // request, every one of them is stranded by definition.
     await db.outbox.where('state').equals('syncing').modify({ state: 'pending', nextAttemptAt: 0 });
+
+    // A till that lost its catalog but kept its pull cursor (a cleared store,
+    // a partial wipe) would otherwise wait forever for deltas it has already
+    // consumed: the server has nothing newer than the cursor, so nothing is
+    // ever re-sent. An empty catalog with a cursor means "start over".
+    const [productCount, savedCursor] = await Promise.all([db.products.count(), getPullCursor()]);
+    if (productCount === 0 && savedCursor !== null) {
+      await setPullCursor(null);
+      return;
+    }
+
+    // Ghost damage from the old stock-merge bug: rows whose "name" is a
+    // machine id — either their own id (the original signature) or a stock
+    // level id (the later variant). Real product names are human text; no
+    // server product is named like a cuid. Deleting them is safe and REQUIRED
+    // rather than merely re-pulling: their timestamps come from stock changes,
+    // so in a full pull they would look "newer" than the real products and win
+    // the merge, keeping the damage alive. Deleted, the full pull re-creates
+    // every one of them with real fields.
+    const damaged = await db.products
+      .filter((p) => p.name === p.id || /^[a-z0-9]{24,}$/.test(p.name))
+      .toArray();
+    if (damaged.length > 0 && savedCursor !== null) {
+      await setPullCursor(null);
+      await db.products.bulkDelete(damaged.map((p) => p.id));
+    }
 
     const [lastSyncedAt, lastError, lastErrorAt] = await Promise.all([
       getMeta<number | null>(LAST_SYNCED_KEY, null),
@@ -265,6 +291,23 @@ class SyncEngine {
     return targets.length;
   }
 
+  /**
+   * Drop permanently failed items from the queue.
+   *
+   * Only `failed`/`conflict` rows are discardable — a pending or syncing row
+   * is money still owed to the server and must never be silently deleted.
+   * This is the operator's pressure valve for items that can never succeed
+   * (a payload from a since-fixed bug, a duplicate with nothing left to do).
+   */
+  async discard(clientTxnIds?: string[]): Promise<number> {
+    const candidates = await db.outbox.where('state').anyOf('failed', 'conflict').toArray();
+    const targets = clientTxnIds ? candidates.filter((e) => clientTxnIds.includes(e.clientTxnId)) : candidates;
+
+    await db.outbox.bulkDelete(targets.map((entry) => entry.clientTxnId));
+    await this.refreshStatus();
+    return targets.length;
+  }
+
   // -------------------------------------------------------------------------
   // Drain loop
   // -------------------------------------------------------------------------
@@ -301,6 +344,21 @@ class SyncEngine {
       await this.purge();
       await this.setError(null);
     } catch (error) {
+      // A 401 means the session is gone and the refresh flow is signing the
+      // operator out. Retrying would only hammer the server with requests it
+      // must keep rejecting — and each refresh attempt carries a cookie the
+      // server's reuse detection answers by revoking the operator's NEW
+      // session, locking them out of every tab. So the engine parks itself
+      // here; the next sign-in remounts the terminal and calls start() again.
+      if (error instanceof ApiError && error.status === 401) {
+        const message = 'Session expired — sign in to resume syncing';
+        this.lastErrorAt = Date.now();
+        this.patch({ state: 'degraded', lastError: message });
+        await setMeta(LAST_ERROR_KEY, message).catch(() => undefined);
+        await setMeta(LAST_ERROR_AT_KEY, this.lastErrorAt).catch(() => undefined);
+        this.stop();
+        return;
+      }
       await this.setError(error instanceof Error ? error.message : String(error));
     } finally {
       this.draining = false;
@@ -621,6 +679,10 @@ export function getSyncStatus(): SyncStatus {
 
 export function retrySync(clientTxnIds?: string[]): Promise<number> {
   return syncEngine.retry(clientTxnIds);
+}
+
+export function discardSync(clientTxnIds?: string[]): Promise<number> {
+  return syncEngine.discard(clientTxnIds);
 }
 
 /** Exposed for the status bar and for tests that need to reason about the loop. */

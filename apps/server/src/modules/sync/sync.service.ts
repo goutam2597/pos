@@ -121,6 +121,7 @@ const cashMovementPayloadSchema = z.object({
   type: z.enum(['DROP', 'PAYOUT', 'COUNT_IN', 'COUNT_OUT', 'FLOAT']),
   amount: money.positive(),
   reason: z.string().max(200).nullish(),
+  capturedAt: z.number().int().optional(),
 });
 
 const VOID_SALE_SCHEMA = z.object({
@@ -404,6 +405,26 @@ async function applyOperation(tx: Tx, ctx: ApplyContext): Promise<SyncPushItemRe
       const payload = parsed.data as z.infer<typeof cashMovementPayloadSchema>;
       assertBranchAccess(payload.branchId);
 
+      // The shift is born offline with a client-minted id and may never have
+      // been seen here. Adopting that id as the Shift's primary key keeps the
+      // till's later cash events and sales (which cite the same id) resolvable
+      // — dropping the movement instead would strand real drawer activity.
+      const shift = await tx.shift.findUnique({ where: { id: payload.shiftId }, select: { id: true } });
+      if (!shift) {
+        await tx.shift.create({
+          data: {
+            id: payload.shiftId,
+            businessId: ctx.businessId,
+            branchId: payload.branchId,
+            registerId: payload.registerId,
+            userId: ctx.userId,
+            openedAt: payload.capturedAt ? new Date(payload.capturedAt) : new Date(),
+            openingFloat: item.type === 'REGISTER_CASH_COUNT' && (payload.type === 'FLOAT' || payload.type === 'COUNT_IN') ? payload.amount : 0,
+          },
+          select: { id: true },
+        });
+      }
+
       const movement = await tx.cashMovement.create({
         data: {
           shiftId: payload.shiftId,
@@ -419,6 +440,22 @@ async function applyOperation(tx: Tx, ctx: ApplyContext): Promise<SyncPushItemRe
       await recordOperation(tx, ctx, 'APPLIED', 'Shift', movement.id, null, null, parsed.data);
 
       return { clientTxnId: item.clientTxnId, kind: 'applied', serverId: movement.id };
+    }
+
+    case 'HOLD_RELEASE': {
+      // The till addresses the parked cart by the CREATE's clientTxnId.
+      // Releasing is idempotent: a hold the server never received (captured
+      // offline and released before any sync) is already exactly where the
+      // operator wants it — gone.
+      const payload = parsed.data as { holdId: string };
+      const hold = await tx.saleHold.findFirst({
+        where: { businessId: ctx.businessId, clientTxnId: payload.holdId },
+        select: { id: true },
+      });
+      if (hold) await tx.saleHold.delete({ where: { id: hold.id } });
+
+      await recordOperation(tx, ctx, 'APPLIED', 'Hold', payload.holdId, null, null, parsed.data);
+      return { clientTxnId: item.clientTxnId, kind: 'applied', serverId: payload.holdId };
     }
 
     case 'SALE_VOID':
@@ -752,7 +789,9 @@ const FEEDS: Record<SyncEntity, EntityFeed> = {
         entity: 'product' as const,
         id: r.id,
         updatedAt: toMs(r.updatedAt),
-        deleted: false,
+        // Archived products keep their ledger history but must not be sold,
+        // so the till treats them like tombstones and hides the tile.
+        deleted: r.status === 'ARCHIVED',
         data: {
           id: r.id,
           sku: r.sku,

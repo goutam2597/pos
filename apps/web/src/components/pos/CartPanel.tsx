@@ -112,6 +112,14 @@ export function CartPanel(props: CartPanelProps) {
                 >
                   <div className="flex items-start gap-2">
                     <span className="tabular mt-0.5 w-4 shrink-0 text-[11px] text-[var(--text-tertiary)]">{index + 1}</span>
+                    {line.imageUrl ? (
+                      <img
+                        src={line.imageUrl}
+                        alt=""
+                        loading="lazy"
+                        className="size-8 shrink-0 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] object-cover"
+                      />
+                    ) : null}
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[13px] leading-tight font-medium text-[var(--text-primary)]">{line.name}</p>
                       <p className="truncate text-[11px] text-[var(--text-tertiary)]">

@@ -79,7 +79,18 @@ export async function nextNumber(tx: Tx, options: NextNumberOptions): Promise<st
   const prefix = options.prefix ?? DEFAULT_PREFIXES[options.type];
   const padding = options.padding ?? 6;
 
-  // Create the sequence row on first use.
+  // Create the sequence row on first use — seeded past everything ever issued.
+  // Codes are unique across the whole BUSINESS while buckets are per
+  // branch/register: a new bucket starting at 1 would re-issue numbers another
+  // bucket already spent, and the document create would die on the unique
+  // constraint. Gaps between buckets are fine; reissued numbers are not.
+  const seeded = await tx.$queryRaw<Array<{ next: number }>>`
+    SELECT COALESCE(MAX("nextValue"), 0) + 1 AS next
+      FROM "DocumentSequence"
+     WHERE "businessId" = ${options.businessId} AND "type" = ${options.type}
+  `;
+  const seedNextValue = Number(seeded[0]?.next ?? 1) || 1;
+
   await tx.documentSequence.upsert({
     where: {
       businessId_type_scopeKey: {
@@ -96,7 +107,7 @@ export async function nextNumber(tx: Tx, options: NextNumberOptions): Promise<st
       type: options.type,
       prefix,
       padding,
-      nextValue: 1,
+      nextValue: seedNextValue,
     },
     update: {},
   });

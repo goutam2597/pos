@@ -1,6 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Package, Plus, Tags } from 'lucide-react';
+import { ImagePlus, Loader2, Package, Plus, Tags, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 import { money, qty, percent } from '../lib/format';
@@ -95,6 +95,7 @@ export function ProductsPage() {
       taxId: product.taxId ?? '',
       price: product.price ?? 0,
       costPrice: product.costPrice ?? 0,
+      imageUrl: product.imageUrl ?? null,
       trackInventory: product.trackInventory !== false,
       allowNegativeStock: product.allowNegativeStock === true,
       isActive: product.isActive !== false,
@@ -114,6 +115,7 @@ export function ProductsPage() {
       taxId: form.taxId || null,
       price: form.price,
       costPrice: form.costPrice,
+      imageUrl: form.imageUrl,
       trackInventory: form.trackInventory,
       allowNegativeStock: form.allowNegativeStock,
       isActive: form.isActive,
@@ -158,9 +160,18 @@ export function ProductsPage() {
       sticky: true,
       cell: (row) => (
         <div className="flex min-w-0 items-center gap-2.5">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-default)] bg-[var(--bg-sunken)] text-[var(--text-tertiary)]">
-            <Package size={16} strokeWidth={1.75} aria-hidden="true" />
-          </span>
+          {row.imageUrl ? (
+            <img
+              src={row.imageUrl}
+              alt=""
+              loading="lazy"
+              className="size-8 shrink-0 rounded-[var(--radius-md)] border border-[var(--border-default)] object-cover"
+            />
+          ) : (
+            <span className="flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] border border-[var(--border-default)] bg-[var(--bg-sunken)] text-[var(--text-tertiary)]">
+              <Package size={16} strokeWidth={1.75} aria-hidden="true" />
+            </span>
+          )}
           <div className="min-w-0">
             <Link to={`/products/${row.id}`} className="block truncate font-medium hover:underline">
               {row.name}
@@ -337,6 +348,10 @@ export function ProductsPage() {
           )}
 
           <FormSection title="Identity">
+            <ProductImageField
+              value={form.imageUrl}
+              onChange={(imageUrl) => setForm((current) => ({ ...current, imageUrl }))}
+            />
             <FormGrid>
               <FormField label="Product name" required error={errors.name}>
                 {(id) => (
@@ -498,6 +513,7 @@ interface ProductForm {
   taxId: string;
   price: number;
   costPrice: number;
+  imageUrl: string | null;
   trackInventory: boolean;
   allowNegativeStock: boolean;
   isActive: boolean;
@@ -514,8 +530,88 @@ const emptyProductForm: ProductForm = {
   taxId: '',
   price: 0,
   costPrice: 0,
+  imageUrl: null,
   trackInventory: true,
   allowNegativeStock: false,
   isActive: true,
 };
+
+/**
+ * Product photo picker for the catalogue form.
+ *
+ * Picks a file, uploads it immediately, and holds only the returned URL in
+ * form state — the create/update payload stays JSON and the image is already
+ * safely on the server when "Save" is clicked.
+ */
+function ProductImageField({ value, onChange }: { value: string | null; onChange: (url: string | null) => void }) {
+  const { api } = useAuth();
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  const [uploading, setUploading] = useState(false);
+
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const { url } = await api.upload<{ url: string }>('/uploads', form);
+      onChange(url);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Image upload failed');
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className="flex size-20 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-md)] border border-dashed border-[var(--border-default)] bg-[var(--bg-sunken)]">
+        {value ? (
+          <img src={value} alt="Product image preview" className="size-full object-cover" />
+        ) : (
+          <Package size={22} strokeWidth={1.5} className="text-[var(--text-tertiary)]" aria-hidden="true" />
+        )}
+      </div>
+
+      <div className="flex min-w-0 flex-col items-start gap-1.5">
+        <p className="text-[13px] font-medium text-[var(--text-primary)]">Product image</p>
+        <p className="text-[12px] text-[var(--text-tertiary)]">
+          JPEG, PNG, WebP or GIF up to 5 MB. Shown on the till and in the product list.
+        </p>
+        <div className="flex items-center gap-1.5">
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+            className="hidden"
+            onChange={(event) => void pick(event.target.files?.[0])}
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            icon={uploading ? <Loader2 size={14} className="animate-spin" /> : <ImagePlus size={14} strokeWidth={1.75} />}
+            disabled={uploading}
+            onClick={() => inputRef.current?.click()}
+          >
+            {uploading ? 'Uploading…' : value ? 'Replace' : 'Upload image'}
+          </Button>
+          {value ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              icon={<Trash2 size={14} strokeWidth={1.75} />}
+              disabled={uploading}
+              onClick={() => onChange(null)}
+            >
+              Remove
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
 

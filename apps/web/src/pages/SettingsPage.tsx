@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { KeyRound, Plus, Save } from 'lucide-react';
 
-import { ACTIONS, RESOURCES, allPermissions, type Permission } from '@monopos/shared';
+import { ACTIONS, CURRENCIES, RESOURCES, allPermissions, type Permission } from '@monopos/shared';
 import { cn } from '../lib/cn';
 import { dateTime, relativeTime } from '../lib/format';
 import {
@@ -1044,6 +1044,17 @@ export function SettingsPage() {
 
   const set = (key: string, value: SettingValue) => setDraft((state) => ({ ...state, [key]: value }));
 
+  // Currency is a BUSINESS record, not a settings entry: every formatter in the
+  // app (configureFormatting) reads business.currency. Saving it rewrites the
+  // business and reloads the page so the session context and all formatting
+  // come back initialised with the new currency.
+  const [currency, setCurrency] = useState<string>(business?.currency ?? 'USD');
+  const saveCurrency = useApiMutation<{ currency: string }, unknown>({
+    mutationFn: ({ currency: next }) => api.patch('/business', { currency: next }),
+    successMessage: 'Currency updated — reloading…',
+    onSuccess: () => window.location.reload(),
+  });
+
   const dirty = Object.keys(draft).length > 0;
 
   const saveAll = () => {
@@ -1153,9 +1164,34 @@ export function SettingsPage() {
           </Card>
 
           <Card>
-            <CardHeader title="Currency and timezone" />
+            <CardHeader
+              title="Currency and timezone"
+              description="The currency applies everywhere prices are shown — products, cart, receipts and reports."
+            />
             <div className="grid gap-4 p-4 sm:grid-cols-2">
-              <Input label="Currency" value={business?.currency ?? 'USD'} readOnly hint="Set at signup; changing it would restate every historical amount." />
+              <div className="space-y-2">
+                <Select
+                  label="Currency"
+                  value={currency}
+                  onChange={(event) => setCurrency(event.target.value)}
+                  options={Object.values(CURRENCIES).map((c) => ({
+                    value: c.code,
+                    label: `${c.code} · ${c.symbol}`,
+                  }))}
+                  searchPlaceholder="Search currency…"
+                  hint="Historical amounts keep their stored numbers; they simply display in the new currency."
+                />
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  icon={<Save size={13} strokeWidth={1.75} />}
+                  disabled={currency === (business?.currency ?? 'USD') || saveCurrency.isPending}
+                  loading={saveCurrency.isPending}
+                  onClick={() => saveCurrency.mutate({ currency })}
+                >
+                  Apply currency
+                </Button>
+              </div>
               <Input label="Timezone" value={business?.timezone ?? 'UTC'} readOnly />
             </div>
           </Card>

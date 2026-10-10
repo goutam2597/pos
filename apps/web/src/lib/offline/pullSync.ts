@@ -119,11 +119,19 @@ async function pendingSaleIndex(): Promise<Map<string, { name: string; qtyMilli:
  * Write one page of deltas. All tables commit in a single Dexie transaction, so
  * a crash mid-page leaves the cursor pointing at the previous page.
  */
-export async function applyDeltas(deltas: SyncDelta[]): Promise<number> {
+export async function applyDeltas(deltas: SyncDelta[], receivedProductIds?: Set<string>): Promise<number> {
   if (deltas.length === 0) return 0;
   const index = await pendingSaleIndex();
 
-  const productIds = deltas.filter((d) => d.entity === 'product' || d.entity === 'stock').map((d) => d.id);
+  // Resolve each delta to its PRODUCT id up front. A `stock` delta's own `id`
+  // is the STOCK LEVEL id — keying the local-row lookup by it would miss the
+  // real product row and the merge would then fabricate a nameless $0 stub
+  // over a perfectly good product.
+  const productKeyOf = (d: SyncDelta): string =>
+    d.entity === 'stock' && d.data && typeof (d.data as { productId?: unknown }).productId === 'string'
+      ? (d.data as { productId: string }).productId
+      : d.id;
+  const productIds = deltas.filter((d) => d.entity === 'product' || d.entity === 'stock').map(productKeyOf);
   const existingProducts = new Map(
     (await db.products.bulkGet(productIds)).flatMap((p) => (p ? [[p.id, p] as const] : [])),
   );
@@ -134,6 +142,8 @@ export async function applyDeltas(deltas: SyncDelta[]): Promise<number> {
   // (Dexie does not merge duplicate keys within a single call), which shows up
   // as every product appearing twice on the till.
   const productPuts = new Map<string, CachedProduct>();
+  /** The product is known to this till — staged this page or already cached. */
+  const localProductExists = (id: string): boolean => productPuts.has(id) || existingProducts.has(id);
   const customerPuts: CachedParty[] = [];
   const supplierPuts: CachedParty[] = [];
   const taxPuts: CachedTax[] = [];
@@ -143,16 +153,31 @@ export async function applyDeltas(deltas: SyncDelta[]): Promise<number> {
   const branches = new Map(Object.entries(await getMeta<Record<string, { id: string; name: string; code: string }>>(BRANCHES_KEY, {})));
 
   const applyProduct = (delta: SyncDelta): void => {
-    const productId = delta.entity === 'stock' && delta.data && typeof delta.data.productId === 'string'
-      ? delta.data.productId
-      : delta.id;
+    const productId = productKeyOf(delta);
+
+    // A stock delta for a product this till has never seen carries no name,
+    // price or image — merging it would fabricate a $0 ghost over what should
+    // be a real product. Skip it: the product delta (same feed, and always
+    // part of a full pull) brings the row into existence with real fields,
+    // and the stock level is re-sent the next time stock moves.
+    if (delta.entity === 'stock' && !localProductExists(productId)) return;
 
     // Merge onto whatever this page has already staged for this product, so a
     // product delta followed by a stock delta composes instead of overwriting.
     const local = productPuts.get(productId) ?? existingProducts.get(productId);
     const linked = index.get(productId) ?? [];
     const { product, note } = mergeProductDelta(local, delta, linked);
-    productPuts.set(productId, product);
+    // A `stock` delta's `delta.id` is the STOCK LEVEL id, not the product id —
+    // mergeProductDelta stamps it into `product.id`, which would split the row
+    // under a ghost key while the real product row silently stops updating.
+    // The row must always be keyed and identified by the product id.
+    const merged = { ...product, id: productId };
+    // A stock delta must not make the product row look newer than the product
+    // itself: its timestamp is a stock-change time, and a later PRODUCT delta
+    // (a price change) would otherwise lose the deltaWins comparison forever.
+    if (delta.entity === 'stock' && local) merged.updatedAt = local.updatedAt;
+    productPuts.set(productId, merged);
+    receivedProductIds?.add(productId);
 
     if (note && local) {
       void recordConflictNote({
@@ -263,10 +288,18 @@ export async function pullDeltas(api: ApiClient, options: PullOptions = {}): Pro
   const limit = options.limit ?? PULL_PAGE_SIZE;
   const maxPages = options.maxPages ?? MAX_PAGES;
 
-  let cursor = await getPullCursor();
+  const startCursor = await getPullCursor();
+  let cursor = startCursor;
   let applied = 0;
   let pages = 0;
   let caughtUp = false;
+
+  // A pull that starts from nothing receives EVERY live product, so any local
+  // product row it never mentions is local garbage — a ghost written by an
+  // older sync bug — and can be dropped. Only tracked for full pulls: an
+  // incremental pull legitimately mentions just the changed products.
+  const fullPull = startCursor === null;
+  const receivedProductIds = fullPull ? new Set<string>() : null;
 
   while (pages < maxPages) {
     const response = await api.post<SyncPullResponse>('/sync/pull', {
@@ -284,7 +317,7 @@ export async function pullDeltas(api: ApiClient, options: PullOptions = {}): Pro
     }
 
     const deltas = Array.isArray(response.deltas) ? response.deltas : [];
-    applied += await applyDeltas(deltas);
+    applied += await applyDeltas(deltas, receivedProductIds ?? undefined);
 
     // Cursor advances only now — after the batch is durably written.
     const next = response.nextCursor ?? null;
@@ -298,6 +331,12 @@ export async function pullDeltas(api: ApiClient, options: PullOptions = {}): Pro
     // forever making no progress.
     if (next === cursor) break;
     cursor = next;
+  }
+
+  if (fullPull && caughtUp && receivedProductIds) {
+    const all = await db.products.toArray();
+    const stale = all.filter((p) => !receivedProductIds.has(p.id)).map((p) => p.id);
+    if (stale.length > 0) await db.products.bulkDelete(stale);
   }
 
   return { applied, pages, caughtUp };

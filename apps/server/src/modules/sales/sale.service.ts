@@ -186,7 +186,7 @@ export async function createSaleInTransaction(
   const productIndex = new Map(products.map((p) => [p.id, p]));
   const business = await tx.business.findUniqueOrThrow({
     where: { id: businessId },
-    select: { currency: true, priceIncludesTax: true },
+    select: { currency: true, priceIncludesTax: true, roundingMethod: true },
   });
 
   // --- Default warehouse ---------------------------------------------------
@@ -249,11 +249,15 @@ export async function createSaleInTransaction(
   });
 
   const isAllCash = input.payments.every((p) => p.method === 'CASH');
-  const rounding = isAllCash && !business.priceIncludesTax
-    ? cashRounding(
-        priceCart({ lines: pricingLines, cartDiscount: input.cartDiscount, pricesIncludeTax: business.priceIncludesTax }).total,
-      )
-    : 0;
+  // Whole-unit cash rounding is a business POLICY, not a property of cash
+  // itself — applying it unconditionally turned a $0.65 cash sale into a
+  // $0.00 charge. Only round when the business asked for it.
+  const rounding =
+    isAllCash && !business.priceIncludesTax && business.roundingMethod === 'CASH'
+      ? cashRounding(
+          priceCart({ lines: pricingLines, cartDiscount: input.cartDiscount, pricesIncludeTax: business.priceIncludesTax }).total,
+        )
+      : 0;
 
   const priced = priceCart({
     lines: pricingLines,
@@ -292,22 +296,51 @@ export async function createSaleInTransaction(
   }
 
   // --- Persist -------------------------------------------------------------
+  // Sale codes are unique across the whole business, so they draw from ONE
+  // global sequence. Per-register counters with a business-wide unique
+  // constraint would collide the moment a second register started counting.
   const saleCode = await nextNumber(tx, {
     businessId,
-    branchId,
-    registerId: input.registerId,
     type: 'SALE',
   });
 
   const occurredAt = input.capturedAt ?? new Date();
   const channel: SaleChannel = input.offline ? 'OFFLINE' : (input.channel ?? 'POS');
 
+  // A till's shift is born offline with a client-minted id the server has
+  // never seen. Adopt it as the Shift's primary key so the sale's reference
+  // resolves; without this the FK rejects the whole sale over shift metadata.
+  // When the till could not even name a register, drop the linkage — the sale
+  // itself must still record.
+  let shiftId = input.shiftId ?? null;
+  if (shiftId) {
+    const shift = await tx.shift.findUnique({ where: { id: shiftId }, select: { id: true } });
+    if (!shift) {
+      if (input.registerId) {
+        await tx.shift.create({
+          data: {
+            id: shiftId,
+            businessId,
+            branchId,
+            registerId: input.registerId,
+            userId: input.userId,
+            openedAt: input.capturedAt ? new Date(input.capturedAt) : occurredAt,
+            openingFloat: 0,
+          },
+          select: { id: true },
+        });
+      } else {
+        shiftId = null;
+      }
+    }
+  }
+
   const sale = await tx.sale.create({
     data: {
       businessId,
       branchId,
       registerId: input.registerId ?? null,
-      shiftId: input.shiftId ?? null,
+      shiftId,
       userId: input.userId,
       customerId: input.customerId ?? null,
       code: saleCode,

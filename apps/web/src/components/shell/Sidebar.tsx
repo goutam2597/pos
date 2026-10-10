@@ -198,29 +198,55 @@ function NavEntry({
 
   return (
     <div>
-      <NavLink
-        to={item.to}
-        end={item.to === '/'}
-        onClick={onNavigate}
-        title={collapsed ? label : undefined}
-        className={({ isActive }) =>
-          cn(
+      {/*
+        `newTab` items (the till) are plain anchors: the POS lives in its own
+        browser tab, so opening it must never navigate the admin away.
+      */}
+      {item.newTab ? (
+        <a
+          href={item.to}
+          target="_blank"
+          rel="noopener noreferrer"
+          title={collapsed ? label : undefined}
+          className={cn(
             'flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[13px] transition-colors',
             collapsed && 'justify-center px-0',
-            isActive || hasActiveChild
-              ? 'bg-[var(--accent-subtle)] font-medium text-[var(--accent-text)]'
-              : 'text-[var(--text-secondary)] hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)]',
-          )
-        }
-      >
-        <Icon size={17} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
-        {!collapsed && <span className="min-w-0 flex-1 truncate">{label}</span>}
-        {!collapsed && item.shortcut && (
-          <kbd className="hidden shrink-0 rounded-[var(--radius-xs)] border border-[var(--border-default)] px-1 font-mono text-[10px] text-[var(--text-disabled)] group-hover:inline lg:inline">
-            g {item.shortcut}
-          </kbd>
-        )}
-      </NavLink>
+            'text-[var(--text-secondary)] hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)]',
+          )}
+        >
+          <Icon size={17} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
+          {!collapsed && <span className="min-w-0 flex-1 truncate">{label}</span>}
+          {!collapsed && item.shortcut && (
+            <kbd className="hidden shrink-0 rounded-[var(--radius-xs)] border border-[var(--border-default)] px-1 font-mono text-[10px] text-[var(--text-disabled)] group-hover:inline lg:inline">
+              g {item.shortcut}
+            </kbd>
+          )}
+        </a>
+      ) : (
+        <NavLink
+          to={item.to}
+          end={item.to === '/'}
+          onClick={onNavigate}
+          title={collapsed ? label : undefined}
+          className={({ isActive }) =>
+            cn(
+              'flex items-center gap-2.5 rounded-[var(--radius-md)] px-2.5 py-1.5 text-[13px] transition-colors',
+              collapsed && 'justify-center px-0',
+              isActive || hasActiveChild
+                ? 'bg-[var(--accent-subtle)] font-medium text-[var(--accent-text)]'
+                : 'text-[var(--text-secondary)] hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)]',
+            )
+          }
+        >
+          <Icon size={17} strokeWidth={1.75} aria-hidden="true" className="shrink-0" />
+          {!collapsed && <span className="min-w-0 flex-1 truncate">{label}</span>}
+          {!collapsed && item.shortcut && (
+            <kbd className="hidden shrink-0 rounded-[var(--radius-xs)] border border-[var(--border-default)] px-1 font-mono text-[10px] text-[var(--text-disabled)] group-hover:inline lg:inline">
+              g {item.shortcut}
+            </kbd>
+          )}
+        </NavLink>
+      )}
 
       {!collapsed && item.children && (hasActiveChild || isCurrent) && (
         <ul className="mt-0.5 space-y-0.5 ps-[1.4rem]">

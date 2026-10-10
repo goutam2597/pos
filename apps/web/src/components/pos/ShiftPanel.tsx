@@ -14,9 +14,10 @@
 import { useEffect, useState } from 'react';
 import { Banknote, HandCoins, Lock } from 'lucide-react';
 import { dateTime, money, parseAmountInput } from '../../lib/format';
+import { cn } from '../../lib/cn';
 import { useT } from '../../lib/i18n';
 import type { ShiftSummaryView } from '../../pos/types';
-import { Badge, Button, Divider, Field, Input, Modal, MoneyRow } from './ui';
+import { Badge, Button, CONTROL_H, Divider, Field, Input, Modal, MoneyRow } from './ui';
 
 export interface ShiftPanelProps {
   open: boolean;
@@ -31,7 +32,7 @@ export interface ShiftPanelProps {
 
 export function ShiftPanel({ open, summary, busy, onOpen, onDrop, onClose, onDismiss }: ShiftPanelProps) {
   const t = useT();
-  const [mode, setMode] = useState<'idle' | 'open' | 'drop'>('idle');
+  const [mode, setMode] = useState<'idle' | 'open' | 'drop' | 'count'>('idle');
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -98,7 +99,7 @@ export function ShiftPanel({ open, summary, busy, onOpen, onDrop, onClose, onDis
               <HandCoins size={14} strokeWidth={1.75} />
               Cash drop
             </Button>
-            <Button variant="primary" onClick={() => setMode('idle')}>
+            <Button variant="primary" onClick={() => setMode('count')}>
               Count the drawer
             </Button>
           </>
@@ -217,7 +218,10 @@ export function ShiftButton({
       type="button"
       onClick={onOpen}
       title="Shift (F12)"
-      className="flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-default)] px-2 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--bg-sunken)]"
+      className={cn(
+        'flex items-center gap-1.5 rounded-[var(--radius-md)] border border-[var(--border-default)] px-2 text-[12px] text-[var(--text-secondary)] hover:bg-[var(--bg-sunken)]',
+        CONTROL_H,
+      )}
     >
       {summary === null ? <Lock size={14} strokeWidth={1.75} /> : <Banknote size={14} strokeWidth={1.75} />}
       {summary === null ? 'No shift' : money(summary.expectedCash)}

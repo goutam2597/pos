@@ -28,6 +28,7 @@
     "@prisma/cli-engine": "0.6.3",
     "@prisma/client": "7.10.0",
     "@prisma/orm-postgres": "8.0.0-rc.16",
+    "@types/multer": "^2.3.0",
     "bcryptjs": "^3.0.2",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
@@ -36,6 +37,7 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.1",
+    "multer": "^2.4.0",
     "pg": "^8.16.3",
     "zod": "^4.1.13"
   },

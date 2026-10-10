@@ -43,12 +43,13 @@ export function BranchSwitcher() {
       label="Switch branch"
       align="start"
       items={items}
-      trigger={({ open, ref }) => (
+      trigger={({ open, ref, onToggle }) => (
         <button
           ref={ref}
           type="button"
           aria-haspopup="menu"
           aria-expanded={open}
+          onClick={onToggle}
           className={cn(
             'flex h-[var(--height-control)] max-w-[13rem] items-center gap-1.5 rounded-[var(--radius-md)] px-2',
             'text-[13px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)]',
@@ -117,12 +118,13 @@ export function SyncStatusIndicator() {
     <DropdownMenu
       label="Synchronisation status"
       items={items}
-      trigger={({ open, ref }) => (
+      trigger={({ open, ref, onToggle }) => (
         <button
           ref={ref}
           type="button"
           aria-haspopup="menu"
           aria-expanded={open}
+          onClick={onToggle}
           className={cn(
             'flex size-[var(--height-control)] items-center justify-center rounded-[var(--radius-md)] transition-colors hover:bg-[var(--bg-sunken)]',
             failures > 0 ? 'text-[var(--danger-text)]' : 'text-[var(--warning-text)]',

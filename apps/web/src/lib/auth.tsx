@@ -142,16 +142,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         deviceId = null;
       }
 
-      try {
-        const session = await api.post<{
-          accessToken: string;
-          user: AuthUser;
-          business: AuthBusiness;
-        }>('/auth/refresh', undefined, { noRetry: true });
-        applySession(session);
-      } catch {
-        setStatus('anonymous');
+      // A throttled refresh (429) is not a dead session — the server is just
+      // defending itself. Retry with backoff before showing the login page,
+      // or a busy reload during a throttle window signs the operator out.
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        try {
+          const session = await api.post<{
+            accessToken: string;
+            user: AuthUser;
+            business: AuthBusiness;
+          }>('/auth/refresh', undefined, { noRetry: true });
+          applySession(session);
+          lastError = null;
+          break;
+        } catch (error) {
+          lastError = error;
+          const throttled = error instanceof ApiError && (error.status === 429 || error.status >= 500);
+          if (!throttled) break;
+          await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
+        }
       }
+      if (lastError !== null) setStatus('anonymous');
     })();
   }, [api, applySession]);
 

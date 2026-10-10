@@ -56,7 +56,9 @@ export interface SaleCreatePayload {
   clientTxnId: string;
   capturedAt: number;
   allowCredit: boolean;
-  cartDiscount: CartDiscount;
+  /** Cart-level discount AMOUNT in minor units — the server schema wants a
+   * number here, not the picker state the cart carries. */
+  cartDiscount: number;
   lines: Array<{
     productId: string;
     variantId: string | null;
@@ -106,7 +108,10 @@ export async function captureSale(input: CaptureInput, context: CaptureContext):
     clientTxnId,
     capturedAt,
     allowCredit: input.allowCredit,
-    cartDiscount: input.cartDiscount,
+    // The wire format wants the discount AMOUNT in minor units, not the
+    // picker state ({type, value}) — sending the picker object made the
+    // server reject every till sale as an invalid payload.
+    cartDiscount: priced.cartDiscountTotal,
     lines: priced.lines.map((line) => ({
       productId: line.productId,
       variantId: line.variantId,
@@ -238,13 +243,11 @@ export async function parkCart(
     await db.outbox.add({
       clientTxnId,
       type: 'HOLD_CREATE',
+      // The server's schema: {branchId, label, payload: <the parked cart>}.
       payload: {
-        clientTxnId,
         branchId: context.branchId,
-        registerId: context.registerId,
-        label: hold.label,
-        capturedAt: createdAt,
-        cart,
+        label: hold.label.slice(0, 100),
+        payload: cart,
       },
       capturedAt: createdAt,
       branchId: context.branchId,
@@ -286,11 +289,9 @@ export async function releaseHold(hold: LocalHold, context: { branchId: string; 
   const release = {
     clientTxnId: mintClientTxnId(),
     type: 'HOLD_RELEASE' as const,
+    // The server resolves the parked cart by the CREATE's clientTxnId.
     payload: {
-      holdClientTxnId: hold.clientTxnId,
-      branchId: context.branchId,
-      registerId: context.registerId,
-      capturedAt: Date.now(),
+      holdId: hold.clientTxnId,
     },
     capturedAt: Date.now(),
     branchId: context.branchId,
@@ -475,6 +476,9 @@ export async function openShift(
   openingFloat: number,
   context: { branchId: string; registerId: string | null; cashierName: string | null },
 ): Promise<ShiftState> {
+  // The server's shift ledger keys every cash event to a register; without one
+  // the shift's events would enqueue into a permanently doomed state.
+  if (!context.registerId) throw new Error('Select a register before opening the shift');
   const now = Date.now();
   const clientId = mintClientTxnId();
   const shift: ShiftState = {
@@ -495,8 +499,12 @@ export async function openShift(
       payload: {
         branchId: context.branchId,
         registerId: context.registerId,
-        kind: 'OPENING_FLOAT',
-        counted: openingFloat,
+        // The shift is born offline with a client-minted id; the server adopts
+        // that id as the Shift's primary key so every later sale that cites it
+        // resolves. `type`/`amount` are the server's vocabulary, not ours.
+        shiftId: clientId,
+        type: 'FLOAT',
+        amount: openingFloat,
         capturedAt: now,
       },
       capturedAt: now,
@@ -533,7 +541,9 @@ export async function recordCashDrop(
       type: 'REGISTER_CASH_DROP',
       payload: {
         branchId: context.branchId,
-        registerId: context.registerId,
+        registerId: shift.registerId ?? context.registerId,
+        shiftId: shift.clientId,
+        type: 'DROP',
         amount: Math.max(0, amount),
         reason,
         capturedAt: now,
@@ -602,11 +612,11 @@ export async function closeShift(
       type: 'REGISTER_CASH_COUNT',
       payload: {
         branchId: context.branchId,
-        registerId: context.registerId,
-        kind: 'CLOSE',
-        counted,
-        expected,
-        variance,
+        registerId: shift.registerId ?? context.registerId,
+        shiftId: shift.clientId,
+        type: 'COUNT_IN',
+        amount: counted,
+        reason: variance === 0 ? 'Shift close — counted exact' : `Shift close — variance ${variance}`,
         capturedAt: now,
       },
       capturedAt: now,

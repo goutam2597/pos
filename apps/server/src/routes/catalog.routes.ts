@@ -230,10 +230,24 @@ const productSchema = z.object({
   trackInventory: z.boolean().default(true),
   allowBackorder: z.boolean().default(false),
   allowNegativeStock: z.boolean().default(false),
-  imageUrl: z.string().url().nullish(),
+  // Either a full URL (external CDN) or a server-relative path returned by
+  // the upload endpoint (`/uploads/<name>`); empty string means "cleared".
+  imageUrl: z
+    .string()
+    .trim()
+    .max(500)
+    .refine((v) => v === '' || v.startsWith('/') || /^https?:\/\//i.test(v), {
+      message: 'Image must be an http(s) URL or an uploaded path',
+    })
+    .nullish(),
   sortOrder: z.number().int().default(0),
   variants: z.array(variantSchema).optional(),
 });
+
+/** An empty string is the form's way of saying "image removed". */
+function normalizeImageUrl(value: string | null | undefined): string | null {
+  return value && value.length > 0 ? value : null;
+}
 
 catalogRouter.use(
   '/products',
@@ -274,6 +288,7 @@ catalogRouter.use(
       const { variants, ...rest } = body;
       return {
         ...rest,
+        imageUrl: normalizeImageUrl(body.imageUrl),
         ...(variants?.length
           ? {
               type: 'VARIANT' as const,
@@ -296,9 +311,14 @@ catalogRouter.use(
     mapUpdate: (input) => {
       const body = input as Partial<z.infer<typeof productSchema>>;
       // Variants are managed by their own endpoints; nested replacement here
-      // would silently delete variants that are not in the payload.
+      // would silently delete variants that are not in the payload. Same
+      // logic for the image: absent means "leave it alone", only an explicit
+      // null/empty string clears it.
       const { variants: _variants, ...rest } = body;
-      return rest as Record<string, unknown>;
+      return {
+        ...rest,
+        ...(body.imageUrl !== undefined ? { imageUrl: normalizeImageUrl(body.imageUrl) } : {}),
+      } as Record<string, unknown>;
     },
     beforeDelete: async (record) => {
       const sold = await prisma.saleItem.count({ where: { productId: record.id } });

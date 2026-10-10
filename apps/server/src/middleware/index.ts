@@ -164,7 +164,7 @@ interface Bucket {
  * because a limiter that silently lives on one node is worse than none when you
  * assume you have it.
  */
-export function rateLimit(options?: { windowMs?: number; max?: number; key?: (req: Request) => string }) {
+export function rateLimit(options?: { windowMs?: number; max?: number; key?: (req: Request) => string; skip?: (req: Request) => boolean }) {
   const windowMs = options?.windowMs ?? env.rateLimitWindowMs;
   const max = options?.max ?? env.rateLimitMax;
   const buckets = new Map<string, Bucket>();
@@ -179,6 +179,10 @@ export function rateLimit(options?: { windowMs?: number; max?: number; key?: (re
   sweeper.unref();
 
   return (req: Request, res: Response, next: NextFunction): void => {
+    if (options?.skip?.(req)) {
+      next();
+      return;
+    }
     const key = options?.key?.(req) ?? req.ip ?? 'unknown';
     const now = Date.now();
     const bucket = buckets.get(key);
@@ -231,11 +235,35 @@ export function securityHeaders(): RequestHandler {
   };
 }
 
-/** Reject oversized JSON bodies before they are parsed into memory. */
-export function bodyLimit(limit = '1mb'): RequestHandler {
+/**
+ * Convert an express-style size string ('1mb', '512kb', '102400') to bytes.
+ * A bare parseInt would read '1mb' as 1 byte-times-1024 — 1KB, silently
+ * rejecting any batched payload the JSON parser itself allows.
+ */
+function sizeToBytes(limit: string): number {
+  const match = /^(\d+(?:\.\d+)?)\s*(kb|mb|gb)?$/i.exec(limit.trim());
+  if (!match) return Number(limit) || 0;
+  const value = Number.parseFloat(match[1] ?? '0');
+  const unit = (match[2] ?? '').toLowerCase();
+  const multiplier = unit === 'gb' ? 1024 ** 3 : unit === 'mb' ? 1024 ** 2 : unit === 'kb' ? 1024 : 1;
+  return Math.round(value * multiplier);
+}
+
+/**
+ * Reject oversized JSON bodies before they are parsed into memory.
+ *
+ * `skip` exempts paths that enforce their own limit — the multipart upload
+ * route lets multer cap the file at 5 MB, which this 1 MB JSON ceiling must
+ * not pre-empt.
+ */
+export function bodyLimit(limit = '1mb', skip?: (req: Request) => boolean): RequestHandler {
+  const maxBytes = sizeToBytes(limit);
   return (req, _res, next) => {
+    if (skip?.(req)) {
+      next();
+      return;
+    }
     const declared = Number(req.header('content-length') ?? '0');
-    const maxBytes = Number.parseInt(limit, 10) * 1024;
     if (declared > maxBytes) {
       next(new AppError('VALIDATION_FAILED', 'Request body is too large'));
       return;

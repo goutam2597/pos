@@ -205,6 +205,18 @@ export async function clearLocalData(): Promise<void> {
       ]);
     },
   );
+  // The sync cursors must die with the data: keeping them after a wipe would
+  // make the next pull start from "everything up to X" against an empty till,
+  // and the catalog would never refill. DeviceId deliberately survives — it
+  // is how the server attributes this terminal. The keys below mirror the
+  // constants in syncEngine.ts (importing them here would be circular).
+  await Promise.all([
+    setMeta('pullCursor', null),
+    setMeta('pushCursor', null),
+    setMeta('sync.lastSyncedAt', null),
+    setMeta('sync.lastError', null),
+    setMeta('sync.lastErrorAt', 0),
+  ]);
 }
 
 /**

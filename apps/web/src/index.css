@@ -311,7 +311,27 @@
   main {
     padding: 0 !important;
   }
+
+  /*
+   * Thermal receipt printing. The slip is cloned into a dedicated print root
+   * (see printReceiptSlip) and everything else on the page is display:none —
+   * the one mechanism Chrome's print renderer never gets wrong, unlike
+   * visibility games or fixed-position dances inside modals.
+   */
+  body.printing-receipt > *:not(.thermal-print-root) {
+    display: none !important;
+  }
+  body.printing-receipt {
+    background: white;
+  }
+  .thermal-print-root .thermal-receipt {
+    width: 72mm;
+    max-width: 72mm;
+    box-shadow: none !important;
+    margin: 0;
+  }
+
   @page {
-    margin: 12mm;
+    margin: 4mm;
   }
 }

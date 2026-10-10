@@ -298,7 +298,7 @@ export function DataTable<T>({
           label="Columns"
           align="end"
           items={columnItems}
-          trigger={({ open, ref }) => (
+          trigger={({ open, ref, onToggle }) => (
             <Button
               ref={ref as React.Ref<HTMLButtonElement>}
               variant="ghost"
@@ -306,6 +306,7 @@ export function DataTable<T>({
               iconOnly
               aria-label="Choose columns"
               aria-expanded={open}
+              onClick={onToggle}
             >
               <Columns3 size={16} strokeWidth={1.75} />
             </Button>

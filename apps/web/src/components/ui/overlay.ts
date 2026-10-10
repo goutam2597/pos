@@ -65,6 +65,12 @@ export interface DismissableOptions {
   closeOnEscape?: boolean;
   /** `initial` for dialogs that should receive focus, `anchor` for menus. */
   initialFocus?: 'surface' | 'first' | 'none';
+  /**
+   * Pointer events inside this element (the trigger/anchor) do not count as
+   * "outside" — without it, the same click that closes a menu via this hook
+   * also fires the trigger's toggle and the menu instantly reopens.
+   */
+  ignoreRef?: React.RefObject<HTMLElement | null>;
 }
 
 /** Escape-to-close plus focus capture and restoration. */
@@ -74,6 +80,7 @@ export function useDismissable<T extends HTMLElement>({
   closeOnOutside = true,
   closeOnEscape = true,
   initialFocus = 'surface',
+  ignoreRef,
 }: DismissableOptions): React.RefObject<T | null> {
   const ref = useRef<T | null>(null);
   const restoreTo = useRef<HTMLElement | null>(null);
@@ -120,11 +127,12 @@ export function useDismissable<T extends HTMLElement>({
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       if (ref.current?.contains(target)) return;
+      if (ignoreRef?.current?.contains(target)) return;
       onClose();
     };
     document.addEventListener('pointerdown', onPointerDown, true);
     return () => document.removeEventListener('pointerdown', onPointerDown, true);
-  }, [open, closeOnOutside, onClose]);
+  }, [open, closeOnOutside, onClose, ignoreRef]);
 
   useEffect(() => {
     if (!open) return;

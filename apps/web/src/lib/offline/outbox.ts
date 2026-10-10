@@ -100,20 +100,66 @@ export async function enqueueWithId(
 }
 
 /**
+ * Repair legacy SALE_CREATE payloads stored by the till bug that wrote the
+ * cart-discount PICKER STATE ({type, value}) where the wire expects the
+ * computed amount. Recomputing from the stored lines lets an already-failed
+ * outbox row sync after the fix, instead of being stuck rejected forever.
+ */
+function normalizeSalePayload(payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object') return payload;
+  const p = payload as Record<string, unknown>;
+  const discount = p.cartDiscount;
+  if (discount === null || typeof discount !== 'object') return payload;
+
+  const { type = 'NONE', value = 0 } = discount as { type?: string; value?: number };
+  const gross = Array.isArray(p.lines)
+    ? (p.lines as Array<{ qtyMilli?: unknown; unitPrice?: unknown }>).reduce(
+        (sum, line) => sum + Math.round((Number(line.qtyMilli) || 0) * (Number(line.unitPrice) || 0) / 1000),
+        0,
+      )
+    : 0;
+
+  let amount = 0;
+  if (type === 'FIXED') amount = Number(value) || 0;
+  else if (type === 'PERCENT') amount = Math.round((gross * (Number(value) || 0)) / 10000); // value is basis points
+  p.cartDiscount = Math.max(0, Math.min(amount, gross));
+  return payload;
+}
+
+/** Repair legacy HOLD payloads stored under the pre-fix key names. */
+function normalizeHoldPayload(type: string, payload: unknown): unknown {
+  if (!payload || typeof payload !== 'object') return payload;
+  const p = payload as Record<string, unknown>;
+  if (type === 'HOLD_CREATE' && p.payload === undefined && p.cart !== undefined) {
+    p.payload = p.cart;
+    delete p.cart;
+  }
+  if (type === 'HOLD_RELEASE' && p.holdId === undefined && p.holdClientTxnId !== undefined) {
+    p.holdId = p.holdClientTxnId;
+    delete p.holdClientTxnId;
+  }
+  return payload;
+}
+
+/**
  * Shape an outbox row for the wire.
  *
- * The payload is passed through untouched: it was validated by the server when
- * a previous attempt arrived, and re-shaping it here would be a second, weaker
- * copy of the server's schema. `payload` is `unknown` in the contract, and this
- * function does not pretend otherwise.
+ * The payload is passed through untouched apart from the legacy repairs above:
+ * it was validated by the server when a previous attempt arrived, and
+ * re-shaping it here would be a second, weaker copy of the server's schema.
+ * `payload` is `unknown` in the contract, and this function does not pretend
+ * otherwise.
  */
 export function toPushItem(entry: OutboxEntry): SyncPushItem {
+  let payload = entry.payload;
+  if (entry.type === 'SALE_CREATE') payload = normalizeSalePayload(payload);
+  if (entry.type === 'HOLD_CREATE' || entry.type === 'HOLD_RELEASE') payload = normalizeHoldPayload(entry.type, payload);
   return {
     clientTxnId: entry.clientTxnId,
     type: entry.type,
     capturedAt: entry.capturedAt,
     registerId: entry.registerId,
-    payload: entry.payload,
+    payload,
   };
 }
 

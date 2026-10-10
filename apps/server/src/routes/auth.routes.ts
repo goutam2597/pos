@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db/client.js';
@@ -28,6 +29,27 @@ import { allPermissions, ROLE_PERMISSIONS, SYSTEM_ROLES } from '@monopos/shared'
  */
 
 export const authRouter = Router();
+
+/**
+ * The refresh endpoint is the one a broken client can loop on (a 401 there
+ * triggers the SPA's refresh-and-retry), so it carries its own cap. Keyed by
+ * the cookie's hash, not mere presence: a looping client presenting one dead
+ * or stable cookie then burns only its OWN bucket, while every tab of a
+ * legitimately signed-in browser shares that browser's live cookie and keeps
+ * its own budget. Rotation changes the cookie, which starts a fresh budget —
+ * bounded separately by the rotation-velocity guard in the service.
+ */
+const refreshRateLimiter = rateLimit({
+  windowMs: 15 * 60_000,
+  max: 60,
+  key: (req) => {
+    const cookie = req.cookies?.monopos_refresh as string | undefined;
+    const id = cookie
+      ? createHash('sha256').update(cookie).digest('hex').slice(0, 16)
+      : 'anonymous';
+    return `${req.ip}:${id}`;
+  },
+});
 
 // --- Public ----------------------------------------------------------------
 
@@ -63,6 +85,7 @@ authRouter.post(
 
 authRouter.post(
   '/refresh',
+  refreshRateLimiter,
   handler(async (req, res) => {
     const token = req.cookies?.monopos_refresh as string | undefined;
     if (!token) {
@@ -70,7 +93,20 @@ authRouter.post(
       return;
     }
 
-    const session = await refresh(token);
+    let session;
+    try {
+      session = await refresh(token);
+    } catch (error) {
+      // A token the server has rejected is dead: stop handing it back on
+      // every retry. Clearing the cookie here is what silences a client stuck
+      // re-presenting a rotated-away or deleted token — without it the retry
+      // loop re-triggers revocation handling forever.
+      const code = (error as { code?: string }).code;
+      if (code === 'TOKEN_EXPIRED' || code === 'UNAUTHENTICATED') {
+        res.clearCookie('monopos_refresh', { path: '/api/v1/auth' });
+      }
+      throw error;
+    }
 
     res.cookie('monopos_refresh', session.refreshToken, {
       httpOnly: true,

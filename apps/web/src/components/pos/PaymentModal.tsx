@@ -130,7 +130,7 @@ export function PaymentModal({ open, total, allowCredit, busy, onClose, onConfir
       }
     >
       <div className="flex flex-col gap-3">
-        <div className="flex items-end justify-between rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-sunken)] px-3 py-2.5">
+        <div className="flex items-center justify-between rounded-[var(--radius-lg)] border border-[var(--border-default)] bg-[var(--bg-sunken)] px-3 py-2.5">
           <span className="text-[12px] uppercase tracking-wide text-[var(--text-tertiary)]">{t('pos.total')} due</span>
           <span className="tabular text-[26px] leading-none font-semibold text-[var(--text-primary)]">{money(total)}</span>
         </div>

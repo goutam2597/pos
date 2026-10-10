@@ -67,12 +67,14 @@ export function UserMenu() {
       <DropdownMenu
         label={t('auth.signOut')}
         items={items}
-        trigger={({ open, ref }) => (
+        trigger={({ open, ref, onToggle }) => (
           <button
             ref={ref}
             type="button"
             aria-haspopup="menu"
             aria-expanded={open}
+            aria-label="User menu"
+            onClick={onToggle}
             className={cn(
               'flex items-center gap-2 rounded-[var(--radius-md)] ps-1 pe-2 py-1 transition-colors hover:bg-[var(--bg-sunken)]',
               open && 'bg-[var(--bg-sunken)]',

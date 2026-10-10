@@ -28,13 +28,14 @@ export function ThemeToggle() {
     <DropdownMenu
       label={t('theme.light')}
       items={items}
-      trigger={({ open, ref }) => (
+      trigger={({ open, ref, onToggle }) => (
         <button
           ref={ref}
           type="button"
           aria-haspopup="menu"
           aria-expanded={open}
           aria-label="Theme"
+          onClick={onToggle}
           className={cn(
             'flex size-[var(--height-control)] items-center justify-center rounded-[var(--radius-md)]',
             'text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)]',
@@ -72,13 +73,14 @@ export function LanguageSwitcher() {
     <DropdownMenu
       label={t('language.menu')}
       items={items}
-      trigger={({ open, ref }) => (
+      trigger={({ open, ref, onToggle }) => (
         <button
           ref={ref}
           type="button"
           aria-haspopup="menu"
           aria-expanded={open}
           aria-label={t('language.menu')}
+          onClick={onToggle}
           className={cn(
             'flex h-[var(--height-control)] items-center gap-1.5 rounded-[var(--radius-md)] px-2',
             'text-[13px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)]',

@@ -10,11 +10,14 @@ import {
   errorHandler,
   notFoundHandler,
   rateLimit,
+  requirePermission,
   securityHeaders,
 } from './middleware/index.js';
 import { authMiddleware } from './modules/auth/service.js';
 import { authRouter, metaRouter } from './routes/auth.routes.js';
 import { catalogRouter } from './routes/catalog.routes.js';
+import { uploadRouter } from './routes/upload.routes.js';
+import { ensureUploadsDir, uploadsDir } from './lib/uploads.js';
 import { inventoryRouter } from './modules/inventory/routes.js';
 import { purchasingRouter } from './modules/accounting/purchasing.routes.js';
 import { partiesRouter } from './routes/parties.routes.js';
@@ -36,6 +39,21 @@ import { runWithContext } from './lib/context.js';
 
 export function createApp() {
   const app = express();
+
+  ensureUploadsDir();
+
+  // --- Uploaded files -----------------------------------------------------
+  // Served without auth because <img> tags cannot send bearer tokens; the
+  // filenames are random UUIDs minted by the server, so the directory is not
+  // enumerable. Same cache name forever: a new upload is a new name.
+  app.use(
+    '/uploads',
+    express.static(uploadsDir, {
+      fallthrough: false,
+      maxAge: '30d',
+      immutable: true,
+    }),
+  );
 
   // Behind a reverse proxy, `req.ip` must come from X-Forwarded-For or every
   // client shares one rate-limit bucket. Only enabled when explicitly asked for.
@@ -66,7 +84,7 @@ export function createApp() {
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: false, limit: '1mb' }));
   app.use(securityHeaders());
-  app.use(bodyLimit('1mb'));
+  app.use(bodyLimit('1mb', (req) => req.path === '/api/v1/uploads'));
 
   if (!env.isTest) {
     app.use(
@@ -76,7 +94,15 @@ export function createApp() {
     );
   }
 
-  app.use(rateLimit());
+  // The global per-IP budget covers business API traffic. Credential
+  // endpoints are exempt here and carry their own stricter, per-identity
+  // limiter instead — a chatty or misbehaving client burning the shared
+  // bucket must not also lock the operator out of signing in.
+  app.use(
+    rateLimit({
+      skip: (req) => req.path.startsWith('/api/v1/auth/'),
+    }),
+  );
 
   // --- Health -------------------------------------------------------------
   // Checks the database too: a server that answers 200 while Postgres is down
@@ -99,6 +125,14 @@ export function createApp() {
 
   // --- Everything else requires a session ---------------------------------
   api.use(authMiddleware({ required: true }), establishContext);
+
+  // Multipart uploads. Requires product create OR update, because today the
+  // only consumer is the product image field on the catalogue form.
+  api.use(
+    '/uploads',
+    requirePermission([], ['product:create', 'product:update']),
+    uploadRouter,
+  );
 
   // A till that has been offline cannot refresh its access token, so the sync
   // endpoints additionally accept an expired one and re-check the session row.

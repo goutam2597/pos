@@ -15,9 +15,9 @@
  */
 
 import { useCallback, useEffect, useState } from 'react';
-import { CircleAlert, RefreshCw, TriangleAlert } from 'lucide-react';
+import { CircleAlert, RefreshCw, Trash2, TriangleAlert } from 'lucide-react';
 import { listAttentionEntries } from '../../lib/offline/outbox';
-import { retrySync } from '../../lib/offline/syncEngine';
+import { discardSync, retrySync } from '../../lib/offline/syncEngine';
 import { listConflictNotes, type ConflictNote } from '../../lib/offline/conflicts';
 import { dateTime } from '../../lib/format';
 import { useT } from '../../lib/i18n';
@@ -58,6 +58,19 @@ export function SyncIssuesPanel({ open, onClose, refreshToken }: SyncIssuesPanel
       setBusy(true);
       try {
         await retrySync(ids);
+        await load();
+      } finally {
+        setBusy(false);
+      }
+    },
+    [load],
+  );
+
+  const discard = useCallback(
+    async (id: string) => {
+      setBusy(true);
+      try {
+        await discardSync([id]);
         await load();
       } finally {
         setBusy(false);
@@ -131,6 +144,17 @@ export function SyncIssuesPanel({ open, onClose, refreshToken }: SyncIssuesPanel
                       <Button size="sm" variant="secondary" onClick={() => void retry([entry.clientTxnId])} disabled={busy}>
                         <RefreshCw size={12} strokeWidth={1.75} />
                         {t('action.retry')}
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-[var(--danger-text)]"
+                        title="Remove this item from the queue. The sale itself stays in the sales list — only the failed sync record is dropped."
+                        onClick={() => void discard(entry.clientTxnId)}
+                        disabled={busy}
+                      >
+                        <Trash2 size={12} strokeWidth={1.75} />
+                        Discard
                       </Button>
                       <span className="text-[11px] text-[var(--text-tertiary)]">
                         {entry.attempts} attempt{entry.attempts === 1 ? '' : 's'}

@@ -22,7 +22,7 @@ export const POS_SHORTCUTS: readonly Shortcut[] = [
   { keys: 'F8', label: 'Hold' },
   { keys: 'F9', label: 'Charge' },
   { keys: 'F10', label: 'Total' },
-  { keys: 'F11', label: 'Sync now' },
+  { keys: 'F11', label: 'Fullscreen' },
   { keys: 'F12', label: 'Shift' },
   { keys: '↑↓', label: 'Move' },
   { keys: '+/−', label: 'Quantity' },

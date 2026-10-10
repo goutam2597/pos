@@ -318,23 +318,47 @@ export async function refresh(token: string): Promise<IssuedSession> {
   }
 
   if (session.revokedAt) {
-    await transaction(async (tx) => {
-      await tx.authSession.updateMany({
-        where: { userId: session.userId, revokedAt: null },
-        data: { revokedAt: new Date() },
+    // Two tabs sharing one cookie jar race on rotation: the loser presents a
+    // token that was rotated away seconds ago. That is a lost race, not a
+    // stolen token — cascading on it would sign EVERY tab out on every page
+    // load. Only a token revoked longer than the grace window ago is treated
+    // as reuse; within the window this session (already revoked) is just
+    // refused and the operator signs in again in the tab that lost.
+    const REVOCATION_GRACE_MS = 45_000;
+    const benignRace = Date.now() - session.revokedAt.getTime() < REVOCATION_GRACE_MS;
+
+    if (!benignRace) {
+      await transaction(async (tx) => {
+        await tx.authSession.updateMany({
+          where: { userId: session.userId, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
       });
-    });
-    await prisma.auditLog.create({
-      data: {
-        businessId: session.user.businessId,
-        userId: session.userId,
-        action: 'LOGOUT',
-        entityType: 'Session',
-        entityId: session.id,
-        changes: { reason: 'refresh_token_reuse_detected' },
-      },
-    });
+      await prisma.auditLog.create({
+        data: {
+          businessId: session.user.businessId,
+          userId: session.userId,
+          action: 'LOGOUT',
+          entityType: 'Session',
+          entityId: session.id,
+          changes: { reason: 'refresh_token_reuse_detected' },
+        },
+      });
+    }
     throw new AppError('TOKEN_EXPIRED', 'Your session has expired — please sign in again');
+  }
+
+  // Rotation-velocity guard. A client stuck in a refresh→replay loop with a
+  // live cookie rotates sessions as fast as the event loop allows (observed:
+  // ~90k session rows overnight). Each rotation is individually legitimate;
+  // the VELOCITY is not. A human rotates a handful of times a minute at most.
+  const recentSessions = await prisma.authSession.count({
+    where: { userId: session.userId, createdAt: { gt: new Date(Date.now() - 10_000) } },
+  });
+  if (recentSessions > 20) {
+    throw new AppError('RATE_LIMITED', 'Session refresh is being throttled — retry shortly', {
+      retryAfter: 5,
+    });
   }
 
   // A password change bumps tokenVersion; compare against the value embedded in

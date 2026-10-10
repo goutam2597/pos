@@ -27,8 +27,13 @@ export interface MenuItem {
 }
 
 export interface DropdownMenuProps {
-  /** The trigger. Rendered as-is; the menu anchors to its bounding box. */
-  trigger: (props: { open: boolean; ref: AnchorRef }) => ReactNode;
+  /**
+   * The trigger. Rendered as-is; the menu anchors to its bounding box.
+   * `onToggle` must be wired to the trigger's click — the component has no
+   * other way to open, and a trigger that forgets it renders a menu that
+   * can never be opened.
+   */
+  trigger: (props: { open: boolean; ref: AnchorRef; onToggle: () => void }) => ReactNode;
   items: MenuItem[];
   align?: 'start' | 'end';
   className?: string;
@@ -52,9 +57,12 @@ export function DropdownMenu({ trigger, items, align = 'end', className, label =
     closeOnOutside: true,
     closeOnEscape: true,
     initialFocus: 'none',
+    ignoreRef: anchorRef,
   });
 
   const visible = items.filter((item) => !item.hidden);
+
+  const toggle = () => setOpen((value) => !value);
 
   const panelRef = (node: HTMLDivElement | null) => {
     surfaceRef.current = node;
@@ -69,6 +77,7 @@ export function DropdownMenu({ trigger, items, align = 'end', className, label =
           anchorRef.current = node;
           setAnchor(node);
         },
+        onToggle: toggle,
       })}
 
       {open && (
@@ -158,13 +167,14 @@ export function MenuButton({
       label={label}
       align={align}
       items={items}
-      trigger={({ open, ref }) => (
+      trigger={({ open, ref, onToggle }) => (
         <button
           ref={ref}
           type="button"
           aria-haspopup="menu"
           aria-expanded={open}
           aria-label={label}
+          onClick={onToggle}
           className={cn(
             'flex h-[var(--height-control)] w-[var(--height-control)] items-center justify-center rounded-[var(--radius-md)]',
             'text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-sunken)] hover:text-[var(--text-primary)]',
@@ -203,8 +213,8 @@ export function ButtonMenu({
       align={align}
       label={label}
       className={className}
-      trigger={({ open, ref }) => (
-        <span ref={ref as React.Ref<HTMLSpanElement>} className="inline-flex">
+      trigger={({ open, ref, onToggle }) => (
+        <span ref={ref as React.Ref<HTMLSpanElement>} onClick={onToggle} className="inline-flex cursor-pointer">
           <span aria-expanded={open} aria-haspopup="menu" className="inline-flex">
             {children({ open })}
           </span>

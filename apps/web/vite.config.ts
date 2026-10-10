@@ -20,6 +20,12 @@ export default defineConfig({
         target: 'http://localhost:4000',
         changeOrigin: true,
       },
+      // Uploaded product images resolve to server-relative `/uploads/…` URLs,
+      // so they ride the same proxy and stay same-origin with the app.
+      '/uploads': {
+        target: 'http://localhost:4000',
+        changeOrigin: true,
+      },
     },
   },
   build: {

@@ -53,6 +53,8 @@ export interface ApiEnvelope<T> {
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
   body?: unknown;
+  /** Multipart body (file uploads). Sent as-is; never JSON-encoded. */
+  form?: FormData;
   query?: Record<string, string | number | boolean | undefined | null>;
   signal?: AbortSignal;
   headers?: Record<string, string>;
@@ -112,7 +114,11 @@ export class ApiClient {
     }
 
     const headers: Record<string, string> = { Accept: 'application/json', ...options.headers };
-    if (options.body !== undefined) headers['Content-Type'] = 'application/json';
+    // For FormData no Content-Type is set here on purpose: fetch must add it
+    // itself so the multipart boundary is included. Only JSON gets one.
+    if (options.form === undefined && options.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+    }
 
     const token = this.options.getAccessToken();
     if (token) headers.Authorization = `Bearer ${token}`;
@@ -125,10 +131,15 @@ export class ApiClient {
 
     let response: Response;
     try {
+      const body = options.form !== undefined
+        ? options.form
+        : options.body === undefined
+          ? undefined
+          : JSON.stringify(options.body);
       response = await fetch(url.toString(), {
         method: options.method ?? 'GET',
         headers,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        body,
         signal: options.signal,
         // The refresh token must ride along on every call.
         credentials: 'include',
@@ -150,26 +161,51 @@ export class ApiClient {
     // mid-session. Try once to refresh and replay; never loop.
     if (response.status === 401 && !options.noRetry) {
       const refreshed = await this.tryRefresh();
-      if (refreshed) {
+      if (refreshed === 'ok') {
         return this.rawRequest(path, options);
       }
-      this.options.onUnauthorized();
+      if (refreshed === 'dead') {
+        this.options.onUnauthorized();
+      } else {
+        // The refresh call itself was throttled or the server hiccuped — the
+        // session is fine. Signing out here would end a shift because of a
+        // temporary 429; surface a retryable error and keep the session.
+        throw new ApiError(429, {
+          code: 'RATE_LIMITED',
+          message: 'Session refresh was throttled — retrying shortly',
+        });
+      }
     }
 
     return response;
   }
 
-  private async tryRefresh(): Promise<boolean> {
+  /**
+   * Exchange the refresh cookie for a new access token.
+   *
+   * `ok` — replay the original request. `dead` — the refresh cookie itself is
+   * rejected (401/403): the session is gone, sign the operator out. `failed`
+   * — the refresh could not complete (throttled, network, 5xx): the session
+   * is untouched and the caller should retry later.
+   */
+  private async tryRefresh(): Promise<'ok' | 'dead' | 'failed'> {
     try {
-      await fetch(`${this.options.baseUrl}/auth/refresh`, {
+      const response = await fetch(`${this.options.baseUrl}/auth/refresh`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
       });
+      // A resolved fetch is not a refreshed session: the endpoint answers 401
+      // when the refresh cookie is dead, and treating that as success would
+      // turn every 401 into an infinite refresh→replay loop that also hammers
+      // the rate limiter. Only a real 2xx may justify a replay.
+      if (!response.ok) {
+        return response.status === 401 || response.status === 403 ? 'dead' : 'failed';
+      }
       // The auth provider listens for this and updates its token store.
-      return true;
+      return 'ok';
     } catch {
-      return false;
+      return 'failed';
     }
   }
 
@@ -178,6 +214,10 @@ export class ApiClient {
   }
   post<T>(path: string, body?: unknown, options?: RequestOptions) {
     return this.data<T>(path, { ...options, method: 'POST', body });
+  }
+  /** Multipart upload (e.g. product images). `form` holds the file fields. */
+  upload<T>(path: string, form: FormData, options?: RequestOptions) {
+    return this.data<T>(path, { ...options, method: 'POST', form });
   }
   patch<T>(path: string, body?: unknown) {
     return this.data<T>(path, { method: 'PATCH', body });
