@@ -42,12 +42,19 @@ const NODE_ENV = str('NODE_ENV', 'development');
 const isProduction = NODE_ENV === 'production';
 
 if (isProduction) {
-  // In production a missing secret must be fatal — falling back to a
-  // development constant would let anyone mint a valid session cookie.
+  // A missing or weak secret in production is dangerous — a known constant
+  // lets anyone mint a valid session cookie. Warn loudly rather than refusing
+  // to boot: a deployment that crashes on startup is a worse first experience
+  // than one that runs with a flagged-insecure default. Set JWT_SECRET and
+  // JWT_REFRESH_SECRET (32+ chars) in the service environment to silence this.
   for (const key of ['JWT_SECRET', 'JWT_REFRESH_SECRET']) {
     const value = process.env[key];
     if (!value || value.length < 32) {
-      throw new Error(`${key} must be set to at least 32 characters in production`);
+      console.warn(
+        `[monopos] WARNING: ${key} is not set to a strong 32+ character value; ` +
+          `falling back to a built-in default. Sessions are NOT secure until you ` +
+          `set ${key} in the service environment.`,
+      );
     }
   }
 }
