@@ -13,17 +13,37 @@ import { prisma, disconnect } from './db/client.js';
 
 const app = createApp();
 
-const server = app.listen(env.port, env.host, async () => {
-  // Fail fast if the database is unreachable — better than accepting traffic
-  // that will fail on the first query.
-  try {
-    await prisma.$queryRaw`SELECT 1`;
-    console.log(`[monopos] API listening on http://${env.host}:${env.port} (${env.nodeEnv})`);
-    console.log(`[monopos] database connected`);
-  } catch (error) {
-    console.error('[monopos] FATAL: cannot reach the database', error);
-    process.exit(1);
+/**
+ * Wait for the database with bounded retries instead of exiting on the first
+ * failed query. A managed Postgres (Prisma Postgres and friends) suspends an
+ * idle database and the first connection after a cold start can time out while
+ * it wakes — a fail-fast boot there turns a few-second warm-up into a crash
+ * loop, and the proxy in front serves 502 the whole time. The HTTP server is
+ * already listening (this runs in the `listen` callback), so liveness probes
+ * pass while we wait; readiness at /api/v1/health reports the real state.
+ */
+async function waitForDatabase(): Promise<void> {
+  const maxAttempts = 20;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      await prisma.$queryRaw`SELECT 1`;
+      console.log('[monopos] database connected');
+      return;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[monopos] database not ready (attempt ${attempt}/${maxAttempts}): ${message}`);
+      if (attempt === maxAttempts) {
+        console.error('[monopos] database still unreachable after retries; serving anyway, queries will retry on demand');
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+    }
   }
+}
+
+const server = app.listen(env.port, env.host, () => {
+  console.log(`[monopos] API listening on http://${env.host}:${env.port} (${env.nodeEnv})`);
+  void waitForDatabase();
 });
 
 let shuttingDown = false;

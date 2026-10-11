@@ -16,9 +16,12 @@ const adapter = new PrismaPg({
   max: env.isProduction ? 20 : 10,
   idleTimeoutMillis: 30_000,
   connectionTimeoutMillis: 10_000,
-  // Postgres statement_timeout is a backstop against a pathological query
-  // holding a transaction open and blocking the till.
-  statement_timeout: 15_000,
+  // NOTE: do not set `statement_timeout` here. node-postgres sends it as a
+  // startup parameter, and managed poolers (Prisma Postgres' pgbouncer-style
+  // pooler) reject the whole connection with "Failed to connect to upstream
+  // database" when the startup packet carries it. The query backstop it gave
+  // us is better enforced server-side on the database role, or per-session via
+  // `SET statement_timeout`, neither of which breaks pooled connections.
   application_name: 'monopos-server',
 });
 
