@@ -104,6 +104,15 @@ export function createApp() {
     }),
   );
 
+  // --- Liveness -----------------------------------------------------------
+  // Touches no dependencies, so a reverse proxy / platform probe can tell the
+  // process is up and routable even while the database is still warming. This
+  // also gives the bare domain and /health a 200 instead of a 404. Deeper
+  // readiness (which checks Postgres) lives at /api/v1/health below.
+  app.get(['/', '/health'], (_req, res) => {
+    res.json({ status: 'ok', service: 'monopos-server', uptime: process.uptime() });
+  });
+
   // --- Health -------------------------------------------------------------
   // Checks the database too: a server that answers 200 while Postgres is down
   // is worse than one that fails, because the load balancer keeps sending
