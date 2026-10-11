@@ -33,6 +33,14 @@
     "node": ">=20.11"
   },
   "overrides": {
+    "@effect/platform-bun": "4.0.0-rc.115",
+    "@effect/platform-node": "4.0.0-rc.115",
+    "@effect/platform-node-shared": "4.0.0-rc.115",
+    "@effect/sql-d1": "4.0.0-rc.115",
+    "@effect/sql-mysql2": "4.0.0-rc.115",
+    "@effect/sql-pg": "4.0.0-rc.115",
+    "@effect/sql-sqlite-do": "4.0.0-rc.115",
+    "@effect/vitest": "4.0.0-rc.115",
     "effect": "4.0.0-rc.115"
   },
   "allowScripts": {
@@ -46,6 +54,10 @@
   "dependencies": {
     "@prisma/adapter-pg": "8.1.0-dev.7",
     "@prisma/client": "8.1.0-dev.7",
+    "@prisma/composer": "0.28.0",
+    "@prisma/composer-prisma-cloud": "0.28.0",
+    "alchemy": "2.0.0-beta.78",
+    "effect": "4.0.0-rc.115",
     "prisma": "8.0.0-rc.21"
   }
 }
