@@ -39,3 +39,5 @@ coverage/
 
 # Local Postgres volume if bind-mounted
 pgdata/
+.prisma-composer/
+.alchemy/
