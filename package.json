@@ -20,7 +20,7 @@
     "dev": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
     "dev:server": "npm run dev -w @monopos/server",
     "dev:web": "npm run dev -w @monopos/web",
-    "build": "npm run build -w @monopos/shared && npm run build -w @monopos/server && npm run build -w @monopos/web",
+    "build": "npm run build --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test -w @monopos/server"
   },
