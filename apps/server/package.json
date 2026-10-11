@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node build.mjs",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
     "db:generate": "node ../../tools/prisma7/run.mjs generate",
