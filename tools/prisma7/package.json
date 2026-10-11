@@ -1,0 +1,11 @@
+{
+  "name": "@monopos/prisma7-tools",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Isolated Prisma 7 CLI. The deploy platform requires effect@4.0.0-rc.115 as the only effect version in the workspace tree, but the v7 CLI's config loader (@prisma/config@7.10.0) needs effect@3.20.0. This directory is intentionally NOT an npm workspace so the v7 CLI gets its own dependency tree. Install locally with: npm install --prefix tools/prisma7",
+  "dependencies": {
+    "@prisma/prisma7": "7.10.0",
+    "dotenv": "17.4.2"
+  }
+}

@@ -8,14 +8,24 @@ installed and working side by side:
 | Package | Version | Role |
 |---|---|---|
 | `prisma` (CLI) | 8.0.0-rc.21 | v8 contract + database tooling; satisfies the deploy platform's version check |
-| `@prisma/prisma7` | 7.10.0 | v7 CLI (`npx prisma7 generate` / `migrate dev`) — the v8 CLI dropped these commands |
+| `tools/prisma7` | 7.10.0 | v7 CLI in an **isolated install** (`npm run db:generate` / `db:push` / `db:migrate` / `db:studio` route through `tools/prisma7/run.mjs`) — the v8 CLI dropped these commands |
 | `@prisma/client` | 7.10.0 | runtime for the existing data layer (`src/generated/prisma`) |
 | `@prisma/adapter-pg` | 7.10.0 | driver adapter for the v7 client |
 | `@prisma/orm-postgres` | 8.0.0-rc.16 | v8 runtime (`src/prisma/db.ts`) |
 
+**Why the v7 CLI is isolated:** the deploy platform (Prisma's own) asserts
+`effect@4.0.0-rc.115` as the *only* effect version in the workspace tree (its
+Composer 0.28.0 pins it exactly, enforced via the root `overrides`). The v7
+CLI's config loader (`@prisma/config@7.10.0`) requires `effect@3.20.0` and
+crashes under the v4 RC, so it cannot live in the workspace tree.
+`tools/prisma7` is deliberately not an npm workspace — it has its own
+`node_modules` with `effect@3.20.0`. `tools/prisma7/run.mjs` loads
+`apps/server/.env` and passes `--schema` explicitly, so the v7 CLI runs in
+legacy mode with no config file (the old `prisma7.config.ts` is gone).
+
 Two config files, as the guide requires:
-- `prisma7.config.ts` — v7 shape, imports `@prisma/prisma7/config`
 - `prisma.config.ts` — v8 shape, imports `@prisma/cli-engine` + `@prisma/orm-postgres/config`
+- (v7 config removed — replaced by `tools/prisma7/run.mjs` legacy-mode invocation)
 
 `prisma contract emit` succeeds; `prisma db update` confirms the live database
 matches the contract across all 57 tables.
@@ -82,11 +92,11 @@ That script is the gate every migrated route must pass.
    4. Financial services (sales, ledger, sync) — last, and each behind its e2e check
 3. Audit every date comparison as routes move (string vs `Date`).
 4. After all routes move: remove `@prisma/client`, `@prisma/adapter-pg`,
-   `@prisma/prisma7`, `prisma7.config.ts`, and `src/generated/prisma`.
+   `tools/prisma7`, and `src/generated/prisma`.
 
 ## Verification
 
-- `npx prisma7 generate` regenerates the v7 client
+- `npm run db:generate` regenerates the v7 client (via `tools/prisma7/run.mjs`; the client is committed to git so platform builds don't need the tools install)
 - `npx prisma contract emit` regenerates the v8 contract
 - `npm run verify -w @monopos/server` runs the 48-check e2e suite
 - `npx tsx scripts/pricing-parity.ts` verifies client/server pricing agreement

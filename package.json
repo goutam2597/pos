@@ -11,8 +11,11 @@
   "scripts": {
     "db:up": "docker compose up -d postgres",
     "db:down": "docker compose down",
-    "setup": "npm install && npm run db:up && npm run db:push && npm run db:seed",
-    "db:push": "npm run db:push -w @monopos/server",
+    "setup": "npm install && npm install --prefix tools/prisma7 && npm run db:up && npm run db:push && npm run db:seed",
+    "db:generate": "node tools/prisma7/run.mjs generate",
+    "db:push": "node tools/prisma7/run.mjs db push",
+    "db:migrate": "node tools/prisma7/run.mjs migrate dev",
+    "db:studio": "node tools/prisma7/run.mjs studio",
     "db:seed": "npm run db:seed -w @monopos/server",
     "dev": "concurrently -n server,web -c cyan,magenta \"npm:dev:server\" \"npm:dev:web\"",
     "dev:server": "npm run dev -w @monopos/server",
@@ -30,8 +33,7 @@
     "node": ">=20.11"
   },
   "overrides": {
-    "@effect/vitest": "4.0.2",
-    "effect": "3.20.0"
+    "effect": "4.0.0-rc.115"
   },
   "allowScripts": {
     "esbuild@0.28.2": true,

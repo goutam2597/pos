@@ -9,10 +9,10 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node dist/index.js",
     "typecheck": "tsc --noEmit",
-    "db:generate": "prisma generate",
-    "db:push": "prisma db push",
-    "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio",
+    "db:generate": "node ../../tools/prisma7/run.mjs generate",
+    "db:push": "node ../../tools/prisma7/run.mjs db push",
+    "db:migrate": "node ../../tools/prisma7/run.mjs migrate dev",
+    "db:studio": "node ../../tools/prisma7/run.mjs studio",
     "db:seed": "tsx prisma/seed.ts",
     "verify": "tsx scripts/e2e-check.ts",
     "verify:pricing": "tsx scripts/pricing-parity.ts",
@@ -42,7 +42,6 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
-    "@prisma/prisma7": "7.10.0",
     "@types/cookie-parser": "^1.4.9",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
