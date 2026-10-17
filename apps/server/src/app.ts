@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
@@ -109,7 +111,7 @@ export function createApp() {
   // process is up and routable even while the database is still warming. This
   // also gives the bare domain and /health a 200 instead of a 404. Deeper
   // readiness (which checks Postgres) lives at /api/v1/health below.
-  app.get(['/', '/health'], (_req, res) => {
+  app.get('/health', (_req, res) => {
     res.json({ status: 'ok', service: 'monopos-server', uptime: process.uptime() });
   });
 
@@ -162,6 +164,30 @@ export function createApp() {
   api.use('/', reportsRouter);
 
   app.use('/api/v1', api);
+
+  // --- Web client (SPA) in production -------------------------------------
+  const webDistCandidates = [
+    path.resolve(process.cwd(), '../web/dist'),
+    path.resolve(process.cwd(), 'apps/web/dist'),
+    path.resolve(process.cwd(), 'dist/web'),
+  ];
+  const webDist = webDistCandidates.find(
+    (dir) => fs.existsSync(dir) && fs.existsSync(path.join(dir, 'index.html')),
+  );
+
+  if (webDist) {
+    app.use(express.static(webDist));
+    app.get('*', (req, res, next) => {
+      if (req.path.startsWith('/api') || req.path.startsWith('/uploads')) {
+        return next();
+      }
+      res.sendFile(path.join(webDist, 'index.html'));
+    });
+  } else {
+    app.get('/', (_req, res) => {
+      res.json({ status: 'ok', service: 'monopos-server', uptime: process.uptime() });
+    });
+  }
 
   app.use(notFoundHandler);
   app.use(errorHandler);
