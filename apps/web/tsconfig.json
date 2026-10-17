@@ -23,7 +23,6 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
 
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@monopos/shared": ["../../packages/shared/src/index.ts"]
